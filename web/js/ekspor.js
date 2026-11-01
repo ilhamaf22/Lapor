@@ -177,7 +177,9 @@ export async function buatZip(bulan, items, rkList, progres = () => {}) {
 }
 
 // ---------------- Google Drive ----------------
-const SCOPE = 'https://www.googleapis.com/auth/drive';
+// drive.file: aplikasi hanya bisa melihat & mengubah folder/file yang ia buat sendiri.
+// Scope non-sensitif → aplikasi bisa dipakai siapa pun tanpa verifikasi Google yang berat.
+const SCOPE = 'https://www.googleapis.com/auth/drive.file';
 let _token = null, _tokenExp = 0;
 
 export function mintaToken(clientId) {
@@ -252,31 +254,43 @@ async function unggah(blob, nama, parent, props) {
   return r.id;
 }
 
+export const NAMA_FOLDER_UTAMA = 'Lapor Kinerja - Bukti Dukung';
+
+/** Pastikan folder utama milik aplikasi ada (boleh dipindah pengguna ke mana pun di Drive-nya). */
+async function folderUtama(idTersimpan, simpan) {
+  if (idTersimpan) {
+    try {
+      const f = await gapi(`drive/v3/files/${idTersimpan}?fields=id,trashed&supportsAllDrives=true`);
+      if (f && !f.trashed) return f.id;
+    } catch {}
+  }
+  const baru = await gapi('drive/v3/files?supportsAllDrives=true&fields=id', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: NAMA_FOLDER_UTAMA, mimeType: 'application/vnd.google-apps.folder' })
+  });
+  await simpan?.(baru.id);
+  return baru.id;
+}
+
 /**
- * mode 'baru': [induk]/Bukti Dukung <Bulan>/<kode IKI nama>/foto
- * mode 'skp' : [folder bukti dukung IKI di SKP]/<Bulan Tahun>/<kode IKI nama>/foto (fallback ke 'baru' bila IKI tak punya folder)
+ * Struktur di Drive pengguna:
+ *   Lapor Kinerja - Bukti Dukung / Bukti Dukung <Bulan Tahun> / <kode IKI nama> / 01.Nama kegiatan_4.2.jpg
  */
-export async function kirimKeDrive({ bulan, items, rkList, clientId, mode = 'baru', indukId = null, log = () => {}, progres = () => {} }) {
+export async function kirimKeDrive({ bulan, items, rkList, clientId, folderUtamaId = null, simpanFolderUtama, log = () => {}, progres = () => {} }) {
   await mintaToken(clientId);
   cacheFolder.clear(); cacheIsi.clear();
   const judulBulan = namaBulan(bulan);
   const akarNama = `Bukti Dukung ${judulBulan}`;
+  const utamaId = await folderUtama(folderUtamaId, simpanFolderUtama);
   let akarId = null;
-  const akar = async () => akarId || (akarId = await folder(akarNama, indukId));
+  const akar = async () => akarId || (akarId = await folder(akarNama, utamaId));
 
   const files = daftarFileFoto(items, rkList);
   const tujuan = new Map(); // folder nama + iki → id
   async function folderUntuk(f) {
     const k = f.folder;
     if (tujuan.has(k)) return tujuan.get(k);
-    let id;
-    const skpId = mode === 'skp' ? idFolderDariUrl(f.iki.folder_drive) : null;
-    if (skpId) {
-      const bln = await folder(judulBulan, skpId);
-      id = await folder(f.folder, bln);
-    } else {
-      id = await folder(f.folder, await akar());
-    }
+    const id = await folder(f.folder, await akar());
     tujuan.set(k, id);
     return id;
   }
@@ -313,5 +327,5 @@ export async function kirimKeDrive({ bulan, items, rkList, clientId, mode = 'bar
   const isiAkar = await isiFolder(idAkar);
   if (!isiAkar.nama.has(namaX)) await unggah(excelBlob(bukuExcel(bulan, items, rkList)), namaX, idAkar);
   log(`Selesai: ${files.length - dilewati - gagal - diganti} diunggah, ${dilewati} sudah ada, ${diganti} diganti nama, ${gagal} gagal.`);
-  return { akarUrl: `https://drive.google.com/drive/folders/${idAkar}`, gagal, fotoIds: berhasil };
+  return { akarUrl: `https://drive.google.com/drive/folders/${idAkar}`, utamaUrl: `https://drive.google.com/drive/folders/${utamaId}`, gagal, fotoIds: berhasil };
 }

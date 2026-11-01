@@ -4,7 +4,7 @@ import { siapkan, user, sb, keluar, pengaturan, simpanPengaturan, daftarPeriode,
 import { $, $$, esc, toast, salin, hariIni, bulanIni, akhirBulan, namaBulan, tglPendek, tglPanjang, warnaRk, chipIki } from './util.js';
 import { klasifikasi, klasifikasiKataKunci, saranKataKunci, aiKataKunci } from './klasifikasi.js';
 import { parseSkpRows, parseTemplateRows } from './skp-parser.js';
-import { teksLaporan, bukuExcel, excelBlob, unduhBlob, buatZip, kirimKeDrive, daftarFileFoto } from './ekspor.js';
+import { teksLaporan, bukuExcel, excelBlob, unduhBlob, buatZip, kirimKeDrive, daftarFileFoto, NAMA_FOLDER_UTAMA } from './ekspor.js';
 import { I } from './icons.js';
 
 const root = document.getElementById('app');
@@ -293,40 +293,52 @@ async function eksporZip() {
   } catch (e) { p.log('Gagal: ' + e.message); p.selesai('Terjadi kesalahan.'); }
 }
 
+const clientIdDrive = () => (S.peng.google_client_id || window.LAPOR_CONFIG?.GOOGLE_CLIENT_ID || '').trim();
+
 async function eksporDrive() {
-  if (!S.peng.google_client_id) {
-    return modal(`<h3>Hubungkan Google Drive</h3>
-      <p>Untuk mengunggah langsung ke Drive, isi <b>Google OAuth Client ID</b> di menu Pengaturan (panduan ada di README).</p>
-      <p class="muted">Sementara itu, pakai <b>ZIP foto per IKI</b>: ekstrak lalu seret foldernya ke Google Drive.</p>
-      <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="this.closest('.modal-bg').remove()">Nanti</button>
-      <button class="btn primary" onclick="this.closest('.modal-bg').remove();location.hash='pengaturan'">Ke Pengaturan</button></div>`);
+  const clientId = clientIdDrive();
+  if (!clientId) {
+    return modal(`<h3>${I.drive} Kirim ke Google Drive belum aktif</h3>
+      <p>Admin situs ini belum memasang <b>Google OAuth Client ID</b>. Setelah dipasang, semua pengguna cukup login Google — tanpa pengaturan apa pun.</p>
+      <p class="muted">Sementara itu pakai <b>ZIP foto per IKI</b>: ekstrak lalu seret foldernya ke Google Drive. Struktur foldernya sama.</p>
+      <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button class="btn" data-tutadmin>${I.book} Saya admin — lihat cara memasang</button>
+      <button class="btn primary" onclick="this.closest('.modal-bg').remove()">Mengerti</button></div>`)
+      .querySelector('[data-tutadmin]').onclick = e => { e.target.closest('.modal-bg').remove(); bukaTutorial('oauth'); };
   }
-  const adaSkp = S.flat.some(i => i.folder_drive);
   const bg = modal(`
-    <h3>Kirim ke Google Drive · ${namaBulan(S.bulan)}</h3>
-    <p class="muted" style="margin:0">${daftarFileFoto(S.items, S.rk).length} foto. File yang sudah ada tidak diunggah ulang.</p>
-    <label class="opt"><input type="radio" name="dm" value="baru" checked><div><b>Folder baru per bulan</b>
-      <span class="muted tiny">Bukti Dukung ${namaBulan(S.bulan)} / [kode IKI nama] / foto${S.peng.drive_parent_id ? ' — di dalam folder induk pilihanmu' : ' — di My Drive'}</span></div></label>
-    <label class="opt" ${adaSkp ? '' : 'style="opacity:.5"'}><input type="radio" name="dm" value="skp" ${adaSkp ? '' : 'disabled'}><div><b>Langsung ke folder bukti dukung SKP</b>
-      <span class="muted tiny">[folder IKI di SKP] / ${namaBulan(S.bulan)} / [kode IKI nama] / foto. Rekap Excel tetap di folder Bukti Dukung ${namaBulan(S.bulan)}.</span></div></label>
+    <h3>${I.drive} Kirim ke Google Drive · ${namaBulan(S.bulan)}</h3>
+    <p class="muted" style="margin:0 0 10px">${daftarFileFoto(S.items, S.rk).length} foto akan dikirim ke <b>Google Drive akunmu sendiri</b>. Foto yang sudah ada tidak diunggah ulang.</p>
+    <div class="drive-tree">
+      <div>📁 ${NAMA_FOLDER_UTAMA}${S.peng.drive_parent_id ? ` <a href="https://drive.google.com/drive/folders/${esc(S.peng.drive_parent_id)}" target="_blank" rel="noopener">buka ↗</a>` : ' <span class="muted">(dibuat otomatis)</span>'}</div>
+      <div style="padding-left:22px">📁 Bukti Dukung ${namaBulan(S.bulan)}</div>
+      <div style="padding-left:44px">📁 [kode IKI] [nama IKI] → 01.Nama kegiatan_4.2.jpg</div>
+      <div style="padding-left:44px">📊 Rekap Kegiatan ${namaBulan(S.bulan)}.xlsx</div>
+    </div>
+    <p class="muted tiny" style="margin:10px 0 0">Pertama kali, Google akan meminta kamu login dan mengizinkan aplikasi membuat file di Drive-mu. Aplikasi hanya bisa mengakses folder yang ia buat sendiri.</p>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
-      <button class="btn ghost" id="dm-batal">Batal</button><button class="btn accent" id="dm-ok">${I.drive} Mulai</button></div>`);
+      <button class="btn ghost" id="dm-batal">Batal</button><button class="btn accent" id="dm-ok">${I.drive} Login Google & kirim</button></div>`);
   $('#dm-batal', bg).onclick = () => bg.remove();
   $('#dm-ok', bg).onclick = async () => {
-    const mode = $('input[name=dm]:checked', bg).value; bg.remove();
+    bg.remove();
     const p = modalProgres('Mengunggah ke Google Drive');
     try {
-      const { idFolderDariUrl } = await import('./ekspor.js');
       const r = await kirimKeDrive({
-        bulan: S.bulan, items: S.items, rkList: S.rk, clientId: S.peng.google_client_id, mode,
-        indukId: idFolderDariUrl(S.peng.drive_parent_id || '') || null,
+        bulan: S.bulan, items: S.items, rkList: S.rk, clientId,
+        folderUtamaId: S.peng.drive_parent_id || null,
+        simpanFolderUtama: async id => { try { S.peng = await simpanPengaturan({ drive_parent_id: id }); } catch {} },
         log: t => p.log(t), progres: (a, b, nm) => p.set(a, b, nm)
       });
       await catatEkspor(r.fotoIds);
-      p.selesai(`Selesai. <a href="${r.akarUrl}" target="_blank">Buka folder di Drive ↗</a>`
+      p.selesai(`Selesai. <a href="${r.akarUrl}" target="_blank">Buka folder bulan ini ↗</a> · <a href="${r.utamaUrl}" target="_blank">Folder utama ↗</a>`
         + tawaranHapus(r.fotoIds.length, r.gagal ? `${r.gagal} foto gagal terkirim — foto itu tidak akan ikut dihapus.` : 'Cek dulu foldernya di Drive bila perlu.'));
       pasangTawaran(p.bg);
-    } catch (e) { p.log('Gagal: ' + e.message); p.selesai('Terjadi kesalahan — cek Client ID & izin akses.'); }
+    } catch (e) {
+      p.log('Gagal: ' + e.message);
+      const m = String(e.message);
+      p.selesai(/origin|invalid_client/i.test(m) ? 'Client ID belum mengizinkan alamat situs ini. Admin: tambahkan alamat situs di <b>Authorized JavaScript origins</b>.'
+        : /access_denied|dibatalkan|popup/i.test(m) ? 'Login Google dibatalkan atau ditolak. Coba lagi dan pilih <b>Izinkan</b>.'
+        : 'Terjadi kesalahan saat mengirim. Coba lagi beberapa saat lagi.');
+    }
   };
 }
 
@@ -531,7 +543,7 @@ async function renderEditor() {
               <button class="btn sm ghost danger" data-hik="${i.id}" title="Hapus IKI">${I.trash}</button>
             </div>
             <label>Kata kunci (${(i.kata_kunci || []).length})<textarea data-ik="${i.id}" data-f="kata_kunci">${esc((i.kata_kunci || []).join(', '))}</textarea></label>
-            <label>Folder bukti dukung di Drive (opsional)<input value="${esc(i.folder_drive || '')}" placeholder="https://drive.google.com/drive/folders/…" data-ik="${i.id}" data-f="folder_drive"></label>
+            <label>Link folder bukti dukung SKP (catatan, opsional)<input value="${esc(i.folder_drive || '')}" placeholder="https://drive.google.com/drive/folders/…" data-ik="${i.id}" data-f="folder_drive"></label>
           </div>`).join('')}
         <button class="btn sm ghost" data-tik="${r.id}" data-no="${r.nomor}" data-n="${r.iki.length}" style="margin:10px 0 0 22px">${I.plus} Tambah IKI</button>
       </div>`).join('')}
@@ -596,22 +608,33 @@ function renderAkun() {
       <button class="btn sm tut" data-tut="gemini">${I.book} Lihat tutorial</button></div>
     <p class="muted tiny">Belum punya API key? Klik <b>Lihat tutorial</b> — gratis, ±2 menit.</p>
     <h3 style="margin:22px 0 0;font-size:15px">${I.drive.replace('<svg', '<svg style="width:16px;height:16px;vertical-align:-3px"')} Google Drive</h3>
-    <label>Google OAuth Client ID<input id="a-gcid" value="${esc(p.google_client_id || '')}" placeholder="xxxx.apps.googleusercontent.com"></label>
-    <div class="lbl-row"><label>Folder induk (opsional, link atau ID)<input id="a-parent" value="${esc(p.drive_parent_id || '')}" placeholder="https://drive.google.com/drive/folders/…"></label>
-      <button class="btn sm tut" data-tut="oauth">${I.book} Lihat tutorial</button></div>
-    <p class="muted tiny">Client ID dibuat sekali di Google Cloud. Klik <b>Lihat tutorial</b> untuk langkahnya.</p>
+    ${window.LAPOR_CONFIG?.GOOGLE_CLIENT_ID ? `
+    <div class="drive-ok">
+      <div><b>✓ Siap dipakai</b><span>Tidak perlu pengaturan. Klik <b>Kirim ke Google Drive</b> di Rekap Bulanan, login Google, selesai.</span></div>
+      <button class="btn sm tut" data-tut="drive">${I.book} Lihat tutorial</button>
+    </div>` : `
+    <div class="drive-ok warn">
+      <div><b>Belum aktif di situs ini</b><span>Admin situs perlu memasang Client ID sekali, lalu semua pengguna bisa langsung memakai.</span></div>
+      <button class="btn sm tut" data-tut="oauth">${I.book} Lihat tutorial</button>
+    </div>`}
+    <div class="lbl-row"><label>Folder tujuan di Drive<input value="${p.drive_parent_id ? NAMA_FOLDER_UTAMA : 'Dibuat otomatis saat pertama mengirim'}" disabled></label>
+      ${p.drive_parent_id ? `<a class="btn sm tut" href="https://drive.google.com/drive/folders/${esc(p.drive_parent_id)}" target="_blank" rel="noopener">Buka ↗</a>` : ''}</div>
+    <p class="muted tiny">Folder ini boleh kamu pindahkan ke mana saja di Drive-mu; aplikasi tetap mengenalinya.</p>
+    <details class="lanjut"><summary>Lanjutan: pakai Client ID sendiri</summary>
+      <label>Google OAuth Client ID<input id="a-gcid" value="${esc(p.google_client_id || '')}" placeholder="${window.LAPOR_CONFIG?.GOOGLE_CLIENT_ID ? 'Kosongkan untuk memakai bawaan situs' : 'xxxx.apps.googleusercontent.com'}"></label>
+      <p class="muted tiny">Hanya untuk yang memasang aplikasi ini di situs sendiri. <a href="#" data-tut="oauth">Cara membuat Client ID</a></p>
+    </details>
     <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
       <button class="btn primary" id="a-simpan">${I.save} Simpan</button>
       <button class="btn" id="a-tes">${I.magic} Tes klasifikasi</button>
     </div>
     <div id="a-hasil" class="log hidden" style="margin-top:12px"></div>`;
-  $$('[data-tut]', el).forEach(b => b.onclick = () => bukaTutorial(b.dataset.tut));
+  $$('[data-tut]', el).forEach(b => b.onclick = e => { e.preventDefault(); bukaTutorial(b.dataset.tut); });
   $('#a-simpan').onclick = async () => {
     try {
       S.peng = await simpanPengaturan({
         nama_pegawai: $('#a-nama').value.trim() || null, gemini_api_key: $('#a-key').value.trim() || null,
-        gemini_model: $('#a-model').value.trim() || 'gemini-3.5-flash-lite', google_client_id: $('#a-gcid').value.trim() || null,
-        drive_parent_id: $('#a-parent').value.trim() || null
+        gemini_model: $('#a-model').value.trim() || 'gemini-3.5-flash-lite', google_client_id: $('#a-gcid').value.trim() || null
       });
       toast('Pengaturan tersimpan');
     } catch (e) { toast(e.message, 'err'); }
@@ -843,9 +866,10 @@ function langkah(arr) {
 }
 function bukaTutorial(jenis) {
   const asal = location.origin;
-  const isi = jenis === 'gemini' ? `
+  let isi;
+  if (jenis === 'gemini') isi = `
     <h3>${I.magic} Cara mendapatkan API key Gemini</h3>
-    <p class="muted" style="margin:0 0 6px">Gratis untuk pemakaian pribadi. Dipakai untuk memilah kegiatan yang tidak cocok dengan kata kunci.</p>
+    <p class="muted" style="margin:0 0 6px">Gratis untuk pemakaian pribadi. Setiap pengguna memakai key-nya sendiri. Dipakai untuk memilah kegiatan yang tidak cocok dengan kata kunci.</p>
     ${langkah([
       ['Buka Google AI Studio', 'Buka <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> dan masuk dengan akun Google-mu.'],
       ['Buat API key', 'Klik <b>Create API key</b> (Buat kunci API). Bila diminta memilih project, pilih yang ada atau biarkan dibuatkan project baru.'],
@@ -855,22 +879,41 @@ function bukaTutorial(jenis) {
     ])}
     <div class="tut-note"><b>Kolom Model:</b> biarkan <span class="mono">gemini-3.5-flash-lite</span> (cepat & hemat kuota). Bila suatu saat muncul error model tidak ditemukan,
       ganti dengan model Flash/Flash-Lite terbaru dari <a href="https://ai.google.dev/gemini-api/docs/models" target="_blank" rel="noopener">daftar model Gemini</a>.</div>
-    <div class="tut-note warn">Jaga kerahasiaan API key — jangan dibagikan atau diunggah ke tempat umum.</div>` : `
-    <h3>${I.drive} Cara membuat Google OAuth Client ID</h3>
-    <p class="muted" style="margin:0 0 6px">Dibuat sekali saja (±10 menit) agar aplikasi bisa mengunggah foto langsung ke Google Drive-mu. Tanpa ini, tombol <b>ZIP foto per IKI</b> tetap bisa dipakai.</p>
+    <div class="tut-note warn">Jaga kerahasiaan API key — jangan dibagikan atau diunggah ke tempat umum.</div>`;
+
+  if (jenis === 'drive') isi = `
+    <h3>${I.drive} Mengirim bukti dukung ke Google Drive</h3>
+    <p class="muted" style="margin:0 0 6px">Tidak perlu pengaturan apa pun. Foto masuk ke Google Drive <b>akunmu sendiri</b>.</p>
     ${langkah([
-      ['Buka Google Cloud Console', 'Buka <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">console.cloud.google.com</a>, buat project baru (mis. "Lapor Kinerja") atau pakai project yang sama dengan API key Gemini.'],
-      ['Aktifkan Google Drive API', 'Menu <b>APIs & Services → Library</b>, cari <b>Google Drive API</b>, klik <b>Enable</b>.'],
-      ['Atur layar persetujuan', 'Menu <b>Google Auth Platform</b> (dulu: <i>OAuth consent screen</i>) → <b>Get started</b>. Isi nama aplikasi & email, pilih Audience <b>External</b>, lalu <b>Create</b>.'],
-      ['Tambahkan dirimu sebagai penguji', 'Di bagian <b>Audience → Test users</b>, klik <b>Add users</b> dan masukkan email Google yang akan dipakai mengunggah.'],
-      ['Buat Client ID', `Bagian <b>Clients → Create client</b>. Application type: <b>Web application</b>. Pada <b>Authorized JavaScript origins</b> tambahkan alamat situs ini:
-        <span class="copy-row"><span class="mono" id="tut-asal">${esc(asal)}</span><button class="btn sm" id="tut-salin">${I.copy} Salin</button></span>Lalu klik <b>Create</b>.`],
-      ['Tempel di aplikasi', 'Salin <b>Client ID</b> (berakhiran <span class="mono">.apps.googleusercontent.com</span>), tempel di kolom <b>Google OAuth Client ID</b>, lalu <b>Simpan</b>.'],
-      ['Saat pertama mengirim', 'Google menampilkan peringatan <i>"Google hasn\'t verified this app"</i>. Itu wajar untuk aplikasi pribadi — klik <b>Continue</b> (Lanjutkan) dan izinkan akses Drive.'],
+      ['Buka Rekap Bulanan', 'Pilih bulan yang ingin dikirim, pastikan kategori IKI sudah benar.'],
+      ['Klik "Kirim ke Google Drive"', 'Lalu klik <b>Login Google & kirim</b>.'],
+      ['Login & izinkan', 'Pilih akun Google-mu, lalu klik <b>Izinkan</b> / <b>Continue</b>. Ini hanya diminta pertama kali.'],
+      ['Tunggu sampai selesai', 'Klik <b>Buka folder</b> untuk melihat hasilnya di Drive.'],
     ])}
-    <div class="tut-note"><b>Folder induk (opsional):</b> buka folder tujuan di Google Drive, salin alamatnya dari address bar
-      (<span class="mono">https://drive.google.com/drive/folders/…</span>), tempel di kolom <b>Folder induk</b>. Bila kosong, folder dibuat di <i>My Drive</i>.</div>`;
-  const bg = modal(isi + `<div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="btn primary" id="tut-ok">Mengerti</button></div>`, { lebar: 640 });
+    <div class="tut-note"><b>Struktur folder:</b><br>📁 ${NAMA_FOLDER_UTAMA} → 📁 Bukti Dukung &lt;Bulan&gt; → 📁 &lt;kode IKI&gt; → <span class="mono">01.Nama kegiatan_4.2.jpg</span><br>
+      Folder utama boleh kamu pindahkan ke mana saja di Drive-mu (mis. ke folder SKP), aplikasi tetap mengenalinya.</div>
+    <div class="tut-note"><b>Aman:</b> aplikasi hanya bisa melihat dan mengubah folder & file yang ia buat sendiri — bukan isi Drive-mu yang lain.</div>`;
+
+  if (jenis === 'oauth') isi = `
+    <h3>${I.drive} Untuk admin: memasang Google OAuth Client ID</h3>
+    <p class="muted" style="margin:0 0 6px">Cukup <b>sekali</b> oleh pemilik situs (±10 menit). Setelah itu <b>semua pengguna</b> bisa mengirim ke Drive mereka masing-masing hanya dengan login Google.</p>
+    ${langkah([
+      ['Buat project', 'Buka <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">console.cloud.google.com</a> → buat project baru, mis. "Lapor Kinerja".'],
+      ['Aktifkan Google Drive API', 'Menu <b>APIs & Services → Library</b> → cari <b>Google Drive API</b> → <b>Enable</b>.'],
+      ['Isi identitas aplikasi', 'Menu <b>Google Auth Platform</b> (dulu: <i>OAuth consent screen</i>) → <b>Get started</b>. Isi nama aplikasi (mis. "Lapor Kinerja") & email dukungan, pilih Audience <b>External</b>, lalu <b>Create</b>.'],
+      ['Tambahkan izin drive.file', 'Bagian <b>Data Access → Add or remove scopes</b> → centang <span class="mono">…/auth/drive.file</span> → <b>Update</b> → <b>Save</b>. Izin ini non-sensitif: aplikasi hanya bisa mengakses file yang ia buat sendiri.'],
+      ['Buat Client ID', `Bagian <b>Clients → Create client</b> → Application type <b>Web application</b>. Pada <b>Authorized JavaScript origins</b> klik <b>Add URI</b> dan isi persis:
+        <span class="copy-row"><span class="mono" id="tut-asal">${esc(asal)}</span><button class="btn sm" id="tut-salin">${I.copy} Salin</button></span>
+        Tanpa garis miring di akhir. Klik <b>Create</b>, lalu salin <b>Client ID</b>-nya.`],
+      ['Pasang untuk semua pengguna', 'Di repo GitHub, buka <span class="mono">web/config.js</span> dan isi <span class="mono">GOOGLE_CLIENT_ID: \'…apps.googleusercontent.com\'</span>, lalu commit & push. Semua pengguna langsung bisa memakai.'],
+      ['Buka untuk umum', 'Bagian <b>Audience</b> → <b>Publish app</b> → status menjadi <b>In production</b>. Tanpa ini hanya email yang terdaftar di <i>Test users</i> (maks. 100) yang bisa login.'],
+    ])}
+    <div class="tut-note"><b>Bila muncul error:</b><br>
+      • <span class="mono">no registered origin / invalid_client</span> → alamat situs belum ada di <i>Authorized JavaScript origins</i>, atau Client ID yang dipasang berbeda. Perubahan butuh ±5 menit untuk berlaku.<br>
+      • <span class="mono">access_denied</span> → aplikasi masih <i>Testing</i> dan email itu belum jadi Test user; publikasikan aplikasi (langkah 7).<br>
+      • Google meminta verifikasi → untuk izin non-sensitif cukup verifikasi dasar (nama, logo opsional, link kebijakan privasi), aplikasi tetap bisa dipakai selama prosesnya.</div>`;
+
+  const bg = modal(isi + `<div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="btn primary" id="tut-ok">Mengerti</button></div>`, { lebar: 660 });
   $('#tut-ok', bg).onclick = () => bg.remove();
   const sb = $('#tut-salin', bg);
   if (sb) sb.onclick = async () => { (await salin(asal)) ? toast('Alamat situs tersalin') : toast('Gagal menyalin', 'err'); };
