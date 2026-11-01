@@ -63,16 +63,34 @@ function layarLogin(root) {
     <p class="muted tiny">Login sekali, setelah itu aplikasi mengingatmu.</p>
   </div></div>`;
   const ambil = () => ({ email: $('#lg-email').value.trim(), password: $('#lg-pass').value });
+  const valid = ({ email, password }) => {
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) { toast('Isi email yang valid dulu', 'err'); return false; }
+    if (!password || password.length < 6) { toast('Kata sandi minimal 6 karakter', 'err'); return false; }
+    return true;
+  };
+  const pesan = e => {
+    const m = String(e?.message || e);
+    if (/anonymous/i.test(m)) return 'Email/kata sandi kosong. Isi keduanya lalu coba lagi.';
+    if (/signups? (are|is) (not allowed|disabled)/i.test(m)) return 'Pendaftaran dimatikan di Supabase: Authentication → Sign In / Providers → aktifkan "Allow new users to sign up" & Email.';
+    if (/Invalid login credentials/i.test(m)) return 'Email atau kata sandi salah (atau akun belum terdaftar).';
+    if (/Email not confirmed/i.test(m)) return 'Email belum dikonfirmasi. Klik link di email, atau matikan "Confirm email" di Supabase.';
+    if (/already registered/i.test(m)) return 'Email sudah terdaftar — klik Masuk.';
+    if (/rate limit/i.test(m)) return 'Terlalu banyak percobaan. Tunggu beberapa menit.';
+    return m;
+  };
   $('#lg-masuk').onclick = async () => {
-    const { error } = await sb.auth.signInWithPassword(ambil());
-    if (error) toast(error.message, 'err'); else location.reload();
+    const d = ambil(); if (!valid(d)) return;
+    const { error } = await sb.auth.signInWithPassword(d);
+    if (error) toast(pesan(error), 'err'); else location.reload();
   };
   $('#lg-daftar').onclick = async () => {
-    const { data, error } = await sb.auth.signUp(ambil());
-    if (error) return toast(error.message, 'err');
+    const d = ambil(); if (!valid(d)) return;
+    const { data, error } = await sb.auth.signUp(d);
+    if (error) return toast(pesan(error), 'err');
     if (data.session) location.reload();
-    else toast('Cek email untuk konfirmasi, lalu masuk.', 'ok');
+    else toast('Akun dibuat. Cek email untuk konfirmasi, lalu klik Masuk.', 'ok');
   };
+  $('#lg-pass').onkeydown = e => { if (e.key === 'Enter') $('#lg-masuk').click(); };
 }
 
 /** Pastikan sudah terhubung & login. Mengembalikan true jika siap. */
