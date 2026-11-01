@@ -2,10 +2,10 @@
 // - Tampilan aplikasi diambil dari cache HP → terbuka instan, juga saat offline / sinyal lemah.
 // - Di latar belakang file diperbarui dari server, jadi versi baru terpakai pada pembukaan berikutnya.
 // - Data (Supabase, Gemini, Google) tidak pernah di-cache di sini; data offline disimpan aplikasi di IndexedDB.
-const CACHE = 'lapor-kinerja-v3';
+const CACHE = 'lapor-kinerja-v5';
 const ASET = ['./', './index.html', './dashboard.html', './config.js', './css/app.css', './manifest.webmanifest',
   './vendor/supabase.js', './js/catat.js', './js/dashboard.js', './js/db.js', './js/util.js', './js/klasifikasi.js',
-  './js/icons.js', './js/skp-default.js', './js/skp-parser.js', './js/ekspor.js',
+  './js/icons.js', './js/skp-default.js', './js/skp-parser.js', './js/ekspor.js', './js/stamp.js',
   './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', e => {

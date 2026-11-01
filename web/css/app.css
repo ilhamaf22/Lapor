@@ -160,6 +160,16 @@ textarea { resize: vertical; min-height: 90px; }
 .cam-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
 .cam-row .btn { padding: 14px; }
 .cam-row .btn.cam { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.stamp-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.switch.mini { margin: 0; font-size: 13px; }
+.lok { font-size: 12px; color: var(--muted); font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lok::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); margin-right: 6px; vertical-align: 1px; }
+.lok.ok::before { background: var(--ok); }
+.lok.mencari::before { background: var(--accent); animation: denyut 1s infinite; }
+.lok.ditolak::before, .lok.gagal::before { background: var(--err); }
+.stamp-prev img { width: 100%; border-radius: 12px; display: block; }
+.shot img { cursor: zoom-in; }
+.shot-wait { position: absolute; left: 6px; bottom: 6px; font-size: 10px; font-weight: 700; color: #fff; background: rgba(0,0,0,.6); padding: 2px 7px; border-radius: 99px; }
 .form-foot { display: flex; gap: 8px; align-items: end; margin-top: 4px; }
 .form-foot label { flex: 1; }
 .preview-kat { margin-top: 10px; min-height: 24px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

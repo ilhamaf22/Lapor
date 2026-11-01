@@ -6,8 +6,12 @@ import { siapkan, user, periodeUntukTanggal, daftarIki, ikiTersimpan, kegiatanRe
 import { $, $$, esc, hariIni, tglPanjang, toast, salin, chipIki } from './util.js';
 import { klasifikasiKataKunci } from './klasifikasi.js';
 import { I } from './icons.js';
+import { bacaExif, ambilLokasi, lokasiTerakhir, namaTempat, stampFoto, teksKoordinat } from './stamp.js';
 
 const root = document.getElementById('app');
+let stampAktif = true;
+try { stampAktif = localStorage.getItem('lapor-stamp') !== '0'; } catch {}
+
 const state = {
   tanggal: hariIni(), files: [], iki: [], ikiMap: {}, override: '',
   server: [], lokal: [], urls: {}, blobUrls: new Map()
@@ -66,6 +70,10 @@ function render() {
         <input type="file" id="in-kamera" accept="image/*" capture="environment" hidden>
         <input type="file" id="in-galeri" accept="image/*" multiple hidden>
         <div class="shots" id="shots"></div>
+        <div class="stamp-row">
+          <label class="switch mini"><input type="checkbox" id="stamp-on"> Stamp waktu & lokasi</label>
+          <span class="lok" id="lok-status"></span>
+        </div>
 
         <label>Keterangan kegiatan
           <textarea id="ket" placeholder="mis. Membuat desain spanduk SE2026 untuk Kantor Gubernur"></textarea>
@@ -94,8 +102,18 @@ function render() {
   $('#tgl').value = state.tanggal;
   $('#b-kamera').onclick = () => $('#in-kamera').click();
   $('#b-galeri').onclick = () => $('#in-galeri').click();
-  $('#in-kamera').onchange = e => tambahFile(e.target.files);
-  $('#in-galeri').onchange = e => tambahFile(e.target.files);
+  $('#in-kamera').onchange = e => tambahFile(e.target.files, 'kamera');
+  $('#in-galeri').onchange = e => tambahFile(e.target.files, 'galeri');
+  $('#stamp-on').checked = stampAktif;
+  $('#stamp-on').onchange = e => {
+    stampAktif = e.target.checked;
+    try { localStorage.setItem('lapor-stamp', stampAktif ? '1' : '0'); } catch {}
+    if (stampAktif) siapkanLokasi(); else renderLokasi();
+    state.files.forEach(f => { if (stampAktif && !f.stamped) prosesStamp(f); });
+    renderShots();
+  };
+  $('#b-kamera').addEventListener('click', () => stampAktif && siapkanLokasi());
+  $('#b-galeri').addEventListener('click', () => stampAktif && siapkanLokasi());
   $('#ket').oninput = previewKategori;
   $('#ovr').onchange = e => { state.override = e.target.value; previewKategori(); };
   $('#tgl').onchange = async e => {
@@ -142,16 +160,94 @@ async function jalankanSinkron() {
 }
 
 // ---------- Foto ----------
-function tambahFile(list) {
-  for (const f of list) state.files.push({ file: f, url: URL.createObjectURL(f) });
+async function tambahFile(list, sumber) {
+  const baru = [...list].map(f => ({ file: f, url: URL.createObjectURL(f), sumber, waktu: sumber === 'kamera' ? new Date() : new Date(f.lastModified || Date.now()), exif: {} }));
+  state.files.push(...baru);
   renderShots();
   $('#in-kamera').value = ''; $('#in-galeri').value = '';
+  if (stampAktif) siapkanLokasi();
+  for (const f of baru) {
+    f.exif = await bacaExif(f.file);
+    if (f.exif.waktu) f.waktu = f.exif.waktu;
+    if (stampAktif) prosesStamp(f);
+  }
+}
+
+/** Tempel stamp segera setelah foto diambil; thumbnail diganti versi berstamp */
+function prosesStamp(f) {
+  if (f._proses) return f._proses;
+  f._proses = (async () => {
+    try {
+      f.stamped = await stampFoto(f.file, await infoStamp(f));
+      f.urlStamp = URL.createObjectURL(f.stamped);
+    } catch (e) { console.warn('Stamp gagal', e); f.stamped = null; }
+    if (state.files.includes(f)) renderShots();
+  })().finally(() => { f._proses = null; });
+  return f._proses;
+}
+
+// ---------- Lokasi untuk stamp ----------
+let lokStatus = 'idle';
+async function siapkanLokasi() {
+  if (lokStatus === 'mencari') return;
+  lokStatus = 'mencari'; renderLokasi();
+  const l = await ambilLokasi();
+  lokStatus = l?.ditolak ? 'ditolak' : l ? 'ok' : 'gagal';
+  renderLokasi();
+  if (l && !l.ditolak && navigator.onLine !== false) {
+    l.tempat = await namaTempat(l.lat, l.lng);
+    renderLokasi();
+  }
+}
+function renderLokasi() {
+  const el = $('#lok-status'); if (!el) return;
+  if (!stampAktif) { el.textContent = ''; return; }
+  const l = lokasiTerakhir();
+  el.className = 'lok ' + lokStatus;
+  el.textContent = lokStatus === 'mencari' ? 'Mencari titik lokasi…'
+    : lokStatus === 'ditolak' ? 'Izin lokasi ditolak — stamp tanpa titik'
+    : lokStatus === 'gagal' ? 'Lokasi belum didapat — coba di luar ruangan'
+    : l ? (l.tempat || teksKoordinat(l.lat, l.lng, l.akurasi)) : '';
+}
+
+/** Data stamp untuk satu foto */
+async function infoStamp(f) {
+  let lokasi = null;
+  if (f.exif?.lat != null) lokasi = { lat: f.exif.lat, lng: f.exif.lng };
+  else {
+    // Lokasi saat ini hanya dipakai bila fotonya baru (≤ 1 jam); foto galeri lama tanpa GPS tidak diberi titik agar tidak keliru
+    const baru = f.sumber === 'kamera' || Math.abs(Date.now() - f.waktu.getTime()) < 3600000;
+    if (baru) {
+      let l = lokasiTerakhir();
+      if (!l) l = await Promise.race([ambilLokasi(), new Promise(r => setTimeout(() => r(null), 8000))]);
+      if (l && !l.ditolak) lokasi = l;
+    }
+  }
+  let tempat = null;
+  if (lokasi) tempat = lokasi.tempat || await Promise.race([namaTempat(lokasi.lat, lokasi.lng), new Promise(r => setTimeout(() => r(null), 3500))]);
+  return { waktu: f.waktu, lokasi, tempat };
+}
+
+async function pratinjauStamp(i) {
+  const f = state.files[i]; if (!f) return;
+  const bg = sheet(`<h3 style="margin:0 0 10px">Foto dengan stamp</h3><div class="stamp-prev"><p class="muted">Menyiapkan…</p></div>`);
+  if (!f.stamped) await prosesStamp(f);
+  $('.stamp-prev', bg).innerHTML = f.urlStamp ? `<img src="${f.urlStamp}" alt="Foto berstamp">` : `<p class="muted">Stamp gagal dibuat, foto asli yang akan disimpan.</p>`;
 }
 function renderShots() {
   const el = $('#shots');
-  el.innerHTML = state.files.map((f, i) => `<div class="shot"><img src="${f.url}" alt=""><button data-i="${i}" aria-label="Hapus">×</button></div>`).join('')
+  el.innerHTML = state.files.map((f, i) => {
+    const pakai = stampAktif && f.urlStamp ? f.urlStamp : f.url;
+    const tunggu = stampAktif && !f.urlStamp ? '<span class="shot-wait">stamp…</span>' : '';
+    return `<div class="shot"><img src="${pakai}" alt="">${tunggu}<button data-i="${i}" aria-label="Hapus">×</button></div>`;
+  }).join('')
     + `<button class="add-shot" id="add-more">${I.plus}${state.files.length ? 'Tambah' : 'Foto bukti'}</button>`;
-  $$('.shot button', el).forEach(b => b.onclick = () => { URL.revokeObjectURL(state.files[b.dataset.i].url); state.files.splice(b.dataset.i, 1); renderShots(); });
+  $$('.shot button', el).forEach(b => b.onclick = e => {
+    e.stopPropagation(); const f = state.files[b.dataset.i];
+    URL.revokeObjectURL(f.url); if (f.urlStamp) URL.revokeObjectURL(f.urlStamp);
+    state.files.splice(b.dataset.i, 1); renderShots();
+  });
+  $$('.shot img', el).forEach((img, i) => img.onclick = () => stampAktif ? pratinjauStamp(i) : null);
   $('#add-more').onclick = () => $('#in-galeri').click();
 }
 
@@ -199,11 +295,21 @@ async function simpan() {
   const btn = $('#b-simpan');
   btn.disabled = true; btn.innerHTML = 'Menyimpan…';
   try {
+    let files = state.files.map(f => f.file);
+    if (stampAktif && state.files.length) {
+      btn.innerHTML = 'Memberi stamp…';
+      files = [];
+      for (const f of state.files) {
+        if (!f.stamped) await prosesStamp(f);
+        files.push(f.stamped || f.file);
+      }
+      btn.innerHTML = 'Menyimpan…';
+    }
     const rec = await catatLokal({
-      tanggal: state.tanggal, keterangan, files: state.files.map(f => f.file),
+      tanggal: state.tanggal, keterangan, files,
       iki_id: state.override || null, ikiList: state.iki
     });
-    state.files.forEach(f => URL.revokeObjectURL(f.url));
+    state.files.forEach(f => { URL.revokeObjectURL(f.url); if (f.urlStamp) URL.revokeObjectURL(f.urlStamp); });
     state.files = []; $('#ket').value = ''; $('#prev-kat').innerHTML = '';
     renderShots();
     const kode = state.ikiMap[rec.iki_id]?.kode;

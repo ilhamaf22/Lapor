@@ -320,7 +320,8 @@ export async function unduhFoto(path) {
 export async function catatLokal({ tanggal, keterangan, files = [], iki_id = null, ikiList = [] }) {
   const fotos = [];
   for (const f of files) {
-    const blob = await kompresFoto(f);
+    // Foto yang sudah diberi stamp sudah dikecilkan & berupa JPEG → tidak dikompres ulang
+    const blob = f instanceof File ? await kompresFoto(f) : f;
     fotos.push({ id: crypto.randomUUID(), blob, type: blob.type || 'image/jpeg' });
   }
   let kat = { iki_id: null, sumber: null, alasan: null };

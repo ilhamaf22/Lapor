@@ -48,6 +48,17 @@ Ikon *Lapor Kinerja* muncul seperti aplikasi biasa. Login sekali saja.
 - **Salin kegiatan hari ini** → teks rapi siap tempel (opsi penomoran & kode IKI), termasuk kegiatan yang belum terkirim.
 - Ganti tanggal di form untuk mencatat/menyalin kegiatan hari lain.
 
+### Stamp waktu & lokasi di foto
+
+Setiap foto langsung diberi stamp kecil di kanan bawah: hari, tanggal, jam (WIB/WITA/WIT), titik koordinat,
+dan nama tempat (bila ada sinyal). Bisa dimatikan lewat sakelar **Stamp waktu & lokasi** di bawah foto (pilihan diingat).
+
+- Izinkan akses lokasi saat diminta. GPS tetap bekerja tanpa sinyal data; tanpa sinyal stamp hanya berisi koordinat.
+- Foto dari galeri: waktu diambil dari data foto (EXIF). Titik diambil dari GPS di foto bila ada; bila tidak ada,
+  lokasi saat ini dipakai hanya jika fotonya diambil dalam 1 jam terakhir (foto lama tidak diberi titik agar tidak keliru).
+- Ketuk thumbnail untuk melihat foto berstamp ukuran penuh.
+- Foto yang ditambahkan lewat dashboard web tidak diberi stamp.
+
 ### Cepat dibuka & bisa offline
 
 - Tampilan aplikasi (termasuk library Supabase) tersimpan di HP, jadi aplikasi terbuka **instan**, baik saat online,
