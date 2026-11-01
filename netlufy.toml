@@ -1,0 +1,14 @@
+# Konfigurasi Netlify: situs diambil dari folder "web" (tidak ada proses build)
+[build]
+  publish = "web"
+  command = ""
+
+# Service worker & config harus selalu versi terbaru
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+[[headers]]
+  for = "/config.js"
+  [headers.values]
+    Cache-Control = "no-cache"
