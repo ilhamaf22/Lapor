@@ -5,6 +5,10 @@ sudah terpilah otomatis per **Rencana Kinerja → IKI**, dengan foto tersusun **
 
 ```
 laporan-kinerja/
+├── netlify.toml             ← folder publish & fungsi
+├── netlify/                 ← fungsi server (sinkron harian Google Drive)
+│   ├── functions/drive-harian.mjs, drive-hubungkan.mjs
+│   └── lib/drive-server.mjs
 ├── supabase/schema.sql      ← jalankan sekali di Supabase
 └── web/                     ← folder yang di-deploy ke Netlify
     ├── index.html           ← aplikasi HP (PWA): foto, keterangan, salin kegiatan hari ini
@@ -118,32 +122,40 @@ Penghapusan tidak bisa dibatalkan, jadi pastikan ZIP sudah tersimpan atau foto s
 **Input Manual**: tulis banyak kegiatan sekaligus (satu baris satu kegiatan, boleh diawali `05/10` atau `2026-10-05`),
 klik *Kategorikan otomatis*, periksa pratinjau, *Simpan semua*.
 
-## 7. Menghubungkan Google Drive (opsional, ±10 menit, sekali saja)
+## 7. Google Drive: sinkron otomatis harian (setup sekali oleh admin, ±15 menit)
 
-Tanpa langkah ini tombol ZIP tetap bisa dipakai.
+Setiap pengguna cukup klik **Hubungkan Google Drive** sekali. Setelah itu server Netlify mengirim foto yang belum ada
+di Drive **setiap hari pada jam pilihan pengguna** (bawaan 16.00, mengikuti zona waktu perangkatnya) — walau HP & laptop mati.
+Foto masuk ke Drive **akun pengguna masing-masing**: `Lapor Kinerja - Bukti Dukung / Bukti Dukung <Bulan> / <kode IKI> / 01.Nama kegiatan_4.2.jpg`.
 
-1. console.cloud.google.com → buat project (mis. "Lapor Kinerja").
-2. **APIs & Services → Library** → aktifkan **Google Drive API**.
-3. **OAuth consent screen / Google Auth Platform**: tipe *External*, isi nama aplikasi & email.
-   Di **Audience → Test users**, tambahkan email Google-mu. Biarkan status *Testing*.
-4. **Clients → Create client → Web application**.
-   *Authorized JavaScript origins*: `https://<situsmu>.netlify.app`.
-5. Salin **Client ID** → tempel di Pengaturan → *Google OAuth Client ID* → Simpan.
+**Langkah admin:**
+1. console.cloud.google.com → project baru → **APIs & Services → Library → Google Drive API → Enable**.
+2. **Google Auth Platform → Get started**: nama aplikasi, email dukungan, Audience **External**.
+3. **Data Access → Add or remove scopes**: `…/auth/drive.file`, `openid`, `…/auth/userinfo.email` (semuanya non-sensitif).
+4. **Clients → Create client → Web application**
+   - *Authorized JavaScript origins*: `https://laporskp.netlify.app`
+   - *Authorized redirect URIs*: `https://laporskp.netlify.app/oauth.html`
+   - Catat **Client ID** dan **Client secret**.
+5. `web/config.js` → isi `GOOGLE_CLIENT_ID`.
+6. Netlify → **Site configuration → Environment variables**, tambahkan:
+   | Nama | Isi |
+   |---|---|
+   | `GOOGLE_CLIENT_ID` | Client ID dari langkah 4 |
+   | `GOOGLE_CLIENT_SECRET` | Client secret dari langkah 4 |
+   | `SUPABASE_URL` | Supabase → Project Settings → API → Project URL |
+   | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API → *service_role* (rahasia, jangan taruh di config.js) |
+7. Jalankan ulang `supabase/schema.sql` (menambah tabel `drive_koneksi`; refresh token hanya bisa dibaca server).
+8. Push repo. Netlify memasang dua fungsi dari folder `netlify/functions`:
+   - `drive-harian` — terjadwal setiap 15 menit, memproses pengguna yang jam lokalnya sudah lewat jam sinkron dan belum
+     disinkron hari itu. Batas fungsi terjadwal Netlify 30 detik; bila fotonya banyak, sisanya dilanjutkan 15 menit kemudian.
+   - `drive-hubungkan` — menyimpan koneksi, *Sinkron sekarang*, dan *Putuskan*.
+9. **Audience → Publish app** (*In production*). Saat *Testing*, hanya Test users yang bisa terhubung dan izinnya
+   kedaluwarsa setelah 7 hari.
 
-Saat pertama mengirim, Google menampilkan peringatan "aplikasi belum diverifikasi" — wajar untuk aplikasi pribadi;
-klik *Lanjutkan*. Ada dua mode kirim:
-
-- **Folder baru per bulan** → `Bukti Dukung Oktober 2026/4.2 Desain publisitas pada media cetak/…`
-  (di My Drive, atau di dalam *Folder induk* yang kamu isi di Pengaturan).
-- **Langsung ke folder bukti dukung SKP** → masuk ke folder Drive yang tercantum di SKP tiap IKI,
-  dibuatkan subfolder bulan lalu subfolder IKI.
-
-Nama file foto: `[nomor].[nama kegiatan]_[kode IKI].jpg`, misalnya `01.Membuat desain spanduk SE2026_4.2.jpg`.
-Nomor urut per folder IKI berdasarkan tanggal kegiatan. Di Google Drive, foto yang sudah pernah dikirim dikenali dari ID-nya,
-jadi kalau nomornya bergeser (ada kegiatan bertanggal lebih awal ditambahkan), file cukup diganti nama — tidak diunggah ulang.
-
-Tutorial langkah demi langkah untuk API key Gemini dan OAuth Client ID juga tersedia langsung di aplikasi:
-tombol **Lihat tutorial** di menu Pengaturan.
+Pantau di Netlify → **Logs → Functions → drive-harian** (ada tombol **Run now** untuk menguji).
+Tombol **Kirim ke Google Drive** di Rekap Bulanan tetap ada untuk kirim manual + file Excel rekap.
+Bila IKI kegiatan diubah, foto di Drive ikut dipindah pada sinkron berikutnya. Tutorial yang sama ada di aplikasi
+(**RK, IKI & Pengaturan → Google Drive → Lihat tutorial**).
 
 ## 8. Tahun depan
 

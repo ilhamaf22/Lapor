@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Menghubungkan Google Drive…</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: system-ui, sans-serif; background: #f4f1ea; color: #17202e; }
+    @media (prefers-color-scheme: dark) { body { background: #0d1420; color: #e9edf3; } }
+    p { padding: 0 20px; text-align: center; }
+  </style>
+</head>
+<body>
+  <p id="t">Menghubungkan Google Drive…</p>
+  <script>
+    // Halaman kembali dari login Google: kirim kode ke jendela aplikasi lalu tutup.
+    const q = new URLSearchParams(location.search);
+    const data = { type: 'lapor-oauth', code: q.get('code'), state: q.get('state'), error: q.get('error') };
+    try {
+      if (window.opener) { window.opener.postMessage(data, location.origin); setTimeout(() => window.close(), 300); }
+      else {
+        localStorage.setItem('lapor-oauth', JSON.stringify({ ...data, t: Date.now() }));
+        document.getElementById('t').textContent = 'Selesai. Kembali ke aplikasi Lapor Kinerja.';
+        setTimeout(() => location.replace('dashboard.html#pengaturan'), 800);
+      }
+    } catch { document.getElementById('t').textContent = 'Selesai. Tutup jendela ini dan kembali ke aplikasi.'; }
+  </script>
+</body>
+</html>

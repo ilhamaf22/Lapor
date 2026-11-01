@@ -75,6 +75,7 @@ function render() {
           <span class="lok" id="lok-status"></span>
         </div>
 
+
         <label>Keterangan kegiatan
           <textarea id="ket" placeholder="mis. Membuat desain spanduk SE2026 untuk Kantor Gubernur"></textarea>
         </label>
@@ -293,6 +294,7 @@ function previewKategori() {
 async function simpan() {
   const keterangan = $('#ket').value.trim();
   if (!keterangan) return toast('Tulis keterangan kegiatannya dulu', 'err');
+
   const btn = $('#b-simpan');
   btn.disabled = true; btn.innerHTML = 'Menyimpan…';
   try {
@@ -388,7 +390,10 @@ async function tampilkan() {
       ? `<div class="thumb" style="background-image:url('${url}')">${k.nFoto > 1 ? `<span class="n">+${k.nFoto - 1}</span>` : ''}</div>`
       : `<div class="thumb empty">${k.nFoto ? `${I.image}<span class="n">${k.nFoto}</span>` : I.image}</div>`;
     const src = k.sumber_kategori ? `<span class="src">${k.sumber_kategori === 'ai' ? '✦ AI' : k.sumber_kategori === 'manual' ? 'manual' : 'kata kunci'}</span>` : '';
-    const status = k._lokal ? `<span class="badge-q">${I.cloud} ${navigator.onLine === false ? 'Di HP' : 'Mengirim…'}</span>` : '';
+    const fs = (k.foto || []).filter(f => !f.dihapus_at);
+    const diDrive = !k._lokal && fs.length && fs.every(f => f.diekspor_at);
+    const status = k._lokal ? `<span class="badge-q">${I.cloud} ${navigator.onLine === false ? 'Di HP' : 'Mengirim…'}</span>`
+      : diDrive ? `<span class="badge-drive">${I.drive} Drive ✓</span>` : '';
     return `
       <div class="card feed-item ${k._lokal ? 'is-lokal' : ''}">
         ${thumb}

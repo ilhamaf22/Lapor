@@ -354,7 +354,7 @@ export async function buatPeriodeDariSkp(skp, { aktif = true } = {}) {
 // ---------- Kegiatan ----------
 export async function kegiatanRentang(dari, sampai) {
   const { data, error } = await sb.from('kegiatan')
-    .select('*, foto(id,path,diekspor_at,dihapus_at)')
+    .select('*, foto(id,path,created_at,diekspor_at,dihapus_at)')
     .gte('tanggal', dari).lte('tanggal', sampai)
     .order('tanggal').order('created_at');
   if (error) throw error;
@@ -528,6 +528,8 @@ async function kirimSatu(it) {
   }
 }
 
+/** Foto yang baru terkirim di sesi ini (id foto → blob), agar sinkron ke Drive tidak perlu mengunduh ulang */
+export const blobTerkirim = new Map();
 let _sync = null;
 const pendengar = new Set();
 export const statusSinkron = { jalan: false, selesai: 0, total: 0, galat: null };
@@ -548,6 +550,7 @@ async function _sinkron() {
   for (const it of semua) {
     try {
       await kirimSatu(it);
+      (it.fotos || []).forEach(f => blobTerkirim.set(f.id, f.blob));   // dipakai sinkron Drive tanpa unduh ulang
       await antrianHapus(it.id);
       terkirim.push(it);
       statusSinkron.selesai++; kabari();

@@ -483,6 +483,7 @@ async function viewPengaturan() {
   renderPeriode();
   renderEditor();
   renderAkun();
+  cekOAuthTertunda();
   $('#p-impor').onclick = () => $('#p-file').click();
   $('#p-contoh').onclick = unduhContoh;
   $('#p-file').onchange = e => imporSkp(e.target.files[0]);
@@ -608,33 +609,19 @@ function renderAkun() {
       <button class="btn sm tut" data-tut="gemini">${I.book} Lihat tutorial</button></div>
     <p class="muted tiny">Belum punya API key? Klik <b>Lihat tutorial</b> — gratis, ±2 menit.</p>
     <h3 style="margin:22px 0 0;font-size:15px">${I.drive.replace('<svg', '<svg style="width:16px;height:16px;vertical-align:-3px"')} Google Drive</h3>
-    ${window.LAPOR_CONFIG?.GOOGLE_CLIENT_ID ? `
-    <div class="drive-ok">
-      <div><b>✓ Siap dipakai</b><span>Tidak perlu pengaturan. Klik <b>Kirim ke Google Drive</b> di Rekap Bulanan, login Google, selesai.</span></div>
-      <button class="btn sm tut" data-tut="drive">${I.book} Lihat tutorial</button>
-    </div>` : `
-    <div class="drive-ok warn">
-      <div><b>Belum aktif di situs ini</b><span>Admin situs perlu memasang Client ID sekali, lalu semua pengguna bisa langsung memakai.</span></div>
-      <button class="btn sm tut" data-tut="oauth">${I.book} Lihat tutorial</button>
-    </div>`}
-    <div class="lbl-row"><label>Folder tujuan di Drive<input value="${p.drive_parent_id ? NAMA_FOLDER_UTAMA : 'Dibuat otomatis saat pertama mengirim'}" disabled></label>
-      ${p.drive_parent_id ? `<a class="btn sm tut" href="https://drive.google.com/drive/folders/${esc(p.drive_parent_id)}" target="_blank" rel="noopener">Buka ↗</a>` : ''}</div>
-    <p class="muted tiny">Folder ini boleh kamu pindahkan ke mana saja di Drive-mu; aplikasi tetap mengenalinya.</p>
-    <details class="lanjut"><summary>Lanjutan: pakai Client ID sendiri</summary>
-      <label>Google OAuth Client ID<input id="a-gcid" value="${esc(p.google_client_id || '')}" placeholder="${window.LAPOR_CONFIG?.GOOGLE_CLIENT_ID ? 'Kosongkan untuk memakai bawaan situs' : 'xxxx.apps.googleusercontent.com'}"></label>
-      <p class="muted tiny">Hanya untuk yang memasang aplikasi ini di situs sendiri. <a href="#" data-tut="oauth">Cara membuat Client ID</a></p>
-    </details>
+    <div id="drive-harian"><p class="muted tiny">Memuat status Google Drive…</p></div>
     <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
       <button class="btn primary" id="a-simpan">${I.save} Simpan</button>
       <button class="btn" id="a-tes">${I.magic} Tes klasifikasi</button>
     </div>
     <div id="a-hasil" class="log hidden" style="margin-top:12px"></div>`;
   $$('[data-tut]', el).forEach(b => b.onclick = e => { e.preventDefault(); bukaTutorial(b.dataset.tut); });
+  renderDriveHarian();
   $('#a-simpan').onclick = async () => {
     try {
       S.peng = await simpanPengaturan({
         nama_pegawai: $('#a-nama').value.trim() || null, gemini_api_key: $('#a-key').value.trim() || null,
-        gemini_model: $('#a-model').value.trim() || 'gemini-3.5-flash-lite', google_client_id: $('#a-gcid').value.trim() || null
+        gemini_model: $('#a-model').value.trim() || 'gemini-3.5-flash-lite'
       });
       toast('Pengaturan tersimpan');
     } catch (e) { toast(e.message, 'err'); }
@@ -882,39 +869,176 @@ function bukaTutorial(jenis) {
     <div class="tut-note warn">Jaga kerahasiaan API key — jangan dibagikan atau diunggah ke tempat umum.</div>`;
 
   if (jenis === 'drive') isi = `
-    <h3>${I.drive} Mengirim bukti dukung ke Google Drive</h3>
-    <p class="muted" style="margin:0 0 6px">Tidak perlu pengaturan apa pun. Foto masuk ke Google Drive <b>akunmu sendiri</b>.</p>
+    <h3>${I.drive} Sinkron otomatis ke Google Drive</h3>
+    <p class="muted" style="margin:0 0 6px">Foto masuk ke Google Drive <b>akunmu sendiri</b>, otomatis setiap hari — walau HP & laptop mati.</p>
     ${langkah([
-      ['Buka Rekap Bulanan', 'Pilih bulan yang ingin dikirim, pastikan kategori IKI sudah benar.'],
-      ['Klik "Kirim ke Google Drive"', 'Lalu klik <b>Login Google & kirim</b>.'],
-      ['Login & izinkan', 'Pilih akun Google-mu, lalu klik <b>Izinkan</b> / <b>Continue</b>. Ini hanya diminta pertama kali.'],
-      ['Tunggu sampai selesai', 'Klik <b>Buka folder</b> untuk melihat hasilnya di Drive.'],
+      ['Pilih jam sinkron', 'Di menu <b>RK, IKI & Pengaturan → Google Drive</b>, pilih jamnya (bawaan 16.00, mengikuti zona waktu perangkatmu).'],
+      ['Klik "Hubungkan Google Drive"', 'Jendela Google terbuka. Pilih akun Google-mu lalu klik <b>Lanjutkan / Izinkan</b>. Cukup sekali.'],
+      ['Selesai', 'Setiap hari setelah jam itu, server mengirim foto yang belum ada di Drive. Kartu kegiatan di HP mendapat tanda <b>Drive ✓</b>.'],
+      ['Butuh sekarang?', 'Klik <b>Sinkron sekarang</b> kapan saja. Untuk Excel rekap bulanan, pakai tombol <b>Kirim ke Google Drive</b> di Rekap Bulanan.'],
     ])}
     <div class="tut-note"><b>Struktur folder:</b><br>📁 ${NAMA_FOLDER_UTAMA} → 📁 Bukti Dukung &lt;Bulan&gt; → 📁 &lt;kode IKI&gt; → <span class="mono">01.Nama kegiatan_4.2.jpg</span><br>
-      Folder utama boleh kamu pindahkan ke mana saja di Drive-mu (mis. ke folder SKP), aplikasi tetap mengenalinya.</div>
-    <div class="tut-note"><b>Aman:</b> aplikasi hanya bisa melihat dan mengubah folder & file yang ia buat sendiri — bukan isi Drive-mu yang lain.</div>`;
+      Folder utama boleh dipindah ke mana saja di Drive-mu (mis. ke folder SKP). Bila IKI kegiatan diubah, fotonya ikut dipindah saat sinkron berikutnya.</div>
+    <div class="tut-note"><b>Aman:</b> aplikasi hanya bisa melihat dan mengubah folder & file yang ia buat sendiri. Izin bisa dicabut kapan saja lewat tombol <b>Putuskan</b> atau di myaccount.google.com/permissions.</div>`;
 
   if (jenis === 'oauth') isi = `
-    <h3>${I.drive} Untuk admin: memasang Google OAuth Client ID</h3>
-    <p class="muted" style="margin:0 0 6px">Cukup <b>sekali</b> oleh pemilik situs (±10 menit). Setelah itu <b>semua pengguna</b> bisa mengirim ke Drive mereka masing-masing hanya dengan login Google.</p>
+    <h3>${I.drive} Untuk admin: memasang Google Drive</h3>
+    <p class="muted" style="margin:0 0 6px">Cukup <b>sekali</b> oleh pemilik situs (±15 menit). Setelah itu <b>semua pengguna</b> tinggal klik <i>Hubungkan Google Drive</i>.</p>
     ${langkah([
-      ['Buat project', 'Buka <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">console.cloud.google.com</a> → buat project baru, mis. "Lapor Kinerja".'],
-      ['Aktifkan Google Drive API', 'Menu <b>APIs & Services → Library</b> → cari <b>Google Drive API</b> → <b>Enable</b>.'],
-      ['Isi identitas aplikasi', 'Menu <b>Google Auth Platform</b> (dulu: <i>OAuth consent screen</i>) → <b>Get started</b>. Isi nama aplikasi (mis. "Lapor Kinerja") & email dukungan, pilih Audience <b>External</b>, lalu <b>Create</b>.'],
-      ['Tambahkan izin drive.file', 'Bagian <b>Data Access → Add or remove scopes</b> → centang <span class="mono">…/auth/drive.file</span> → <b>Update</b> → <b>Save</b>. Izin ini non-sensitif: aplikasi hanya bisa mengakses file yang ia buat sendiri.'],
-      ['Buat Client ID', `Bagian <b>Clients → Create client</b> → Application type <b>Web application</b>. Pada <b>Authorized JavaScript origins</b> klik <b>Add URI</b> dan isi persis:
-        <span class="copy-row"><span class="mono" id="tut-asal">${esc(asal)}</span><button class="btn sm" id="tut-salin">${I.copy} Salin</button></span>
-        Tanpa garis miring di akhir. Klik <b>Create</b>, lalu salin <b>Client ID</b>-nya.`],
-      ['Pasang untuk semua pengguna', 'Di repo GitHub, buka <span class="mono">web/config.js</span> dan isi <span class="mono">GOOGLE_CLIENT_ID: \'…apps.googleusercontent.com\'</span>, lalu commit & push. Semua pengguna langsung bisa memakai.'],
-      ['Buka untuk umum', 'Bagian <b>Audience</b> → <b>Publish app</b> → status menjadi <b>In production</b>. Tanpa ini hanya email yang terdaftar di <i>Test users</i> (maks. 100) yang bisa login.'],
+      ['Buat project & aktifkan Drive API', 'Di <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">console.cloud.google.com</a> buat project (mis. "Lapor Kinerja"), lalu <b>APIs & Services → Library → Google Drive API → Enable</b>.'],
+      ['Identitas aplikasi', '<b>Google Auth Platform → Get started</b>: nama aplikasi, email dukungan, Audience <b>External</b>.'],
+      ['Izin drive.file', '<b>Data Access → Add or remove scopes</b> → centang <span class="mono">…/auth/drive.file</span>, <span class="mono">openid</span>, <span class="mono">…/auth/userinfo.email</span> → Save. Semuanya non-sensitif.'],
+      ['Buat Client ID (Web application)', `<b>Clients → Create client → Web application</b>.<br><b>Authorized JavaScript origins</b>:
+        <span class="copy-row"><span class="mono">${esc(asal)}</span><button class="btn sm" data-salin="${esc(asal)}">${I.copy} Salin</button></span>
+        <b>Authorized redirect URIs</b>:
+        <span class="copy-row"><span class="mono">${esc(asal)}/oauth.html</span><button class="btn sm" data-salin="${esc(asal)}/oauth.html">${I.copy} Salin</button></span>
+        Klik <b>Create</b>. Catat <b>Client ID</b> dan <b>Client secret</b>.`],
+      ['Client ID untuk browser', 'Di repo, isi <span class="mono">GOOGLE_CLIENT_ID</span> di <span class="mono">web/config.js</span>.'],
+      ['Rahasia untuk server (Netlify)', `Netlify → <b>Site configuration → Environment variables → Add a variable</b>, tambahkan 4 variabel:
+        <span class="mono">GOOGLE_CLIENT_ID</span>, <span class="mono">GOOGLE_CLIENT_SECRET</span>, <span class="mono">SUPABASE_URL</span>,
+        <span class="mono">SUPABASE_SERVICE_ROLE_KEY</span> (Supabase → Project Settings → API → <i>service_role</i>). Jangan taruh secret di config.js.`],
+      ['Database & deploy', 'Jalankan ulang <span class="mono">supabase/schema.sql</span> di SQL Editor (menambah tabel <span class="mono">drive_koneksi</span>), lalu push repo. Netlify otomatis memasang fungsi <span class="mono">drive-harian</span> (jalan tiap 15 menit) dan <span class="mono">drive-hubungkan</span>.'],
+      ['Buka untuk umum', '<b>Audience → Publish app</b> → <b>In production</b>. Saat masih <i>Testing</i>, hanya Test users yang bisa terhubung, dan izinnya kedaluwarsa setelah 7 hari.'],
     ])}
     <div class="tut-note"><b>Bila muncul error:</b><br>
-      • <span class="mono">no registered origin / invalid_client</span> → alamat situs belum ada di <i>Authorized JavaScript origins</i>, atau Client ID yang dipasang berbeda. Perubahan butuh ±5 menit untuk berlaku.<br>
-      • <span class="mono">access_denied</span> → aplikasi masih <i>Testing</i> dan email itu belum jadi Test user; publikasikan aplikasi (langkah 7).<br>
-      • Google meminta verifikasi → untuk izin non-sensitif cukup verifikasi dasar (nama, logo opsional, link kebijakan privasi), aplikasi tetap bisa dipakai selama prosesnya.</div>`;
+      • <span class="mono">redirect_uri_mismatch</span> → alamat <span class="mono">/oauth.html</span> belum ada di <i>Authorized redirect URIs</i>.<br>
+      • <span class="mono">no registered origin / invalid_client</span> → origin belum terdaftar, atau Client ID di config.js berbeda dengan di Netlify.<br>
+      • "Environment variable Netlify belum diisi" → lengkapi langkah 6 lalu <b>Deploys → Trigger deploy</b>.<br>
+      • Cek jalannya sinkron di Netlify → <b>Logs → Functions → drive-harian</b>, atau tombol <b>Run now</b> untuk menguji.</div>`;
 
   const bg = modal(isi + `<div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="btn primary" id="tut-ok">Mengerti</button></div>`, { lebar: 660 });
   $('#tut-ok', bg).onclick = () => bg.remove();
-  const sb = $('#tut-salin', bg);
-  if (sb) sb.onclick = async () => { (await salin(asal)) ? toast('Alamat situs tersalin') : toast('Gagal menyalin', 'err'); };
+  bg.querySelectorAll('[data-salin]').forEach(b => b.onclick = async () => { (await salin(b.dataset.salin)) ? toast('Tersalin') : toast('Gagal menyalin', 'err'); });
+}
+
+// =====================================================================
+// SINKRON HARIAN GOOGLE DRIVE (dijalankan server Netlify)
+// =====================================================================
+const FUNGSI_DRIVE = '/.netlify/functions/drive-hubungkan';
+const SCOPE_HARIAN = 'https://www.googleapis.com/auth/drive.file openid email';
+const zonaPengguna = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Makassar'; } catch { return 'Asia/Makassar'; } };
+const labelZona = z => ({ 'Asia/Jakarta': 'WIB', 'Asia/Pontianak': 'WIB', 'Asia/Makassar': 'WITA', 'Asia/Jayapura': 'WIT' }[z] || z);
+
+async function panggilFungsiDrive(body) {
+  const { data } = await sb.auth.getSession();
+  if (!data?.session) throw new Error('Sesi login habis, silakan masuk lagi');
+  let r;
+  try {
+    r = await fetch(FUNGSI_DRIVE, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + data.session.access_token }, body: JSON.stringify(body) });
+  } catch { throw new Error('Tidak ada koneksi internet'); }
+  if (r.status === 404) throw new Error('Fungsi server belum terpasang (folder netlify/functions belum ter-deploy).');
+  const j = await r.json().catch(() => ({ error: `Server tidak merespons (${r.status})` }));
+  if (!r.ok) throw new Error(j.error || `Gagal (${r.status})`);
+  return j;
+}
+
+async function renderDriveHarian() {
+  const box = $('#drive-harian'); if (!box) return;
+  const clientId = window.LAPOR_CONFIG?.GOOGLE_CLIENT_ID;
+  if (!clientId) {
+    box.innerHTML = `<div class="drive-ok warn"><div><b>Belum aktif di situs ini</b><span>Admin situs perlu memasang Google Drive sekali, lalu semua pengguna bisa langsung memakai.</span></div>
+      <button class="btn sm tut" data-tut2="oauth">${I.book} Lihat tutorial</button></div>`;
+    box.querySelector('[data-tut2]').onclick = () => bukaTutorial('oauth');
+    return;
+  }
+  let kon = null;
+  try {
+    const { data, error } = await sb.from('drive_koneksi').select('user_id,email,zona,jam,aktif,terakhir_tanggal,terakhir_waktu,terakhir_hasil').maybeSingle();
+    if (!error) kon = data;
+  } catch {}
+  const opsiJam = sel => Array.from({ length: 24 }, (_, h) => `<option value="${h}" ${h === sel ? 'selected' : ''}>${String(h).padStart(2, '0')}.00</option>`).join('');
+  const zona = zonaPengguna();
+
+  if (!kon) {
+    box.innerHTML = `
+      <div class="drive-ok"><div><b>Sinkron otomatis setiap hari</b><span>Hubungkan sekali. Setiap hari pada jam yang dipilih, foto yang belum ada di Drive otomatis dikirim ke Google Drive-mu — walau HP & laptop mati.</span></div>
+        <button class="btn sm tut" data-tut2="drive">${I.book} Lihat tutorial</button></div>
+      <div class="lbl-row"><label>Jam sinkron (${esc(labelZona(zona))})<select id="dh-jam">${opsiJam(16)}</select></label>
+        <button class="btn accent tut" id="dh-hub">${I.drive} Hubungkan Google Drive</button></div>`;
+    $('#dh-hub').onclick = () => hubungkanDriveHarian(Number($('#dh-jam').value));
+  } else {
+    const terakhir = kon.terakhir_waktu ? new Date(kon.terakhir_waktu).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : 'belum pernah';
+    box.innerHTML = `
+      <div class="drive-ok ${kon.aktif ? '' : 'warn'}"><div>
+        <b>${kon.aktif ? '✓ Sinkron otomatis aktif' : '⚠ Sinkron berhenti'}</b>
+        <span>${kon.email ? `Ke Google Drive <b>${esc(kon.email)}</b>. ` : ''}${kon.aktif ? `Setiap hari pukul ${String(kon.jam).padStart(2, '0')}.00 ${esc(labelZona(kon.zona))}.` : 'Izin Google dicabut atau kedaluwarsa — hubungkan ulang.'}</span>
+        <span class="muted">Terakhir: ${esc(terakhir)}${kon.terakhir_hasil ? ' · ' + esc(kon.terakhir_hasil) : ''}</span>
+      </div><button class="btn sm tut" data-tut2="drive">${I.book} Lihat tutorial</button></div>
+      <div class="lbl-row"><label>Jam sinkron (${esc(labelZona(kon.zona))})<select id="dh-jam">${opsiJam(kon.jam)}</select></label>
+        <button class="btn tut" id="dh-now">${I.cloud} Sinkron sekarang</button></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+        ${kon.aktif ? '' : `<button class="btn sm accent" id="dh-hub">${I.drive} Hubungkan ulang</button>`}
+        ${S.peng.drive_parent_id ? `<a class="btn sm" href="https://drive.google.com/drive/folders/${esc(S.peng.drive_parent_id)}" target="_blank" rel="noopener">${I.drive} Buka folder di Drive ↗</a>` : ''}
+        <button class="btn sm ghost danger" id="dh-putus">Putuskan</button>
+      </div>`;
+    $('#dh-jam').onchange = async e => {
+      const { error } = await sb.from('drive_koneksi').update({ jam: Number(e.target.value), zona }).eq('user_id', user.id);
+      error ? toast(error.message, 'err') : toast(`Sinkron harian diatur pukul ${String(e.target.value).padStart(2, '0')}.00`);
+    };
+    $('#dh-now').onclick = () => sinkronDriveSekarang($('#dh-now'));
+    if ($('#dh-hub')) $('#dh-hub').onclick = () => hubungkanDriveHarian(kon.jam);
+    $('#dh-putus').onclick = async () => {
+      if (!confirm('Putuskan Google Drive? Sinkron harian berhenti. File yang sudah ada di Drive tidak dihapus.')) return;
+      try { await panggilFungsiDrive({ aksi: 'putus' }); toast('Google Drive diputuskan'); renderDriveHarian(); } catch (e) { toast(e.message, 'err'); }
+    };
+  }
+  box.querySelectorAll('[data-tut2]').forEach(b => b.onclick = () => bukaTutorial(b.dataset.tut2));
+}
+
+/** Buka login Google (harus langsung dari klik agar pop-up tidak diblokir) */
+function hubungkanDriveHarian(jam) {
+  const state = crypto.randomUUID();
+  try { localStorage.setItem('lapor-oauth-state', JSON.stringify({ state, jam })); } catch {}
+  const url = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
+    client_id: window.LAPOR_CONFIG.GOOGLE_CLIENT_ID, redirect_uri: location.origin + '/oauth.html', response_type: 'code',
+    scope: SCOPE_HARIAN, access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true', state
+  });
+  const w = window.open(url, 'lapor-oauth', 'width=520,height=700');
+  if (!w) { location.href = url; return; }      // pop-up diblokir → pindah halaman, kembali lewat oauth.html
+  const onMsg = ev => {
+    if (ev.origin !== location.origin || ev.data?.type !== 'lapor-oauth') return;
+    window.removeEventListener('message', onMsg);
+    selesaiOAuth(ev.data);
+  };
+  window.addEventListener('message', onMsg);
+}
+
+async function selesaiOAuth(d) {
+  let simpan = {};
+  try { simpan = JSON.parse(localStorage.getItem('lapor-oauth-state') || '{}'); localStorage.removeItem('lapor-oauth-state'); localStorage.removeItem('lapor-oauth'); } catch {}
+  if (d.error) return toast(d.error === 'access_denied' ? 'Izin Google tidak diberikan' : 'Login Google gagal: ' + d.error, 'err');
+  if (!d.code || d.state !== simpan.state) return toast('Login Google tidak valid, coba lagi', 'err');
+  toast('Menyimpan koneksi Google Drive…');
+  try {
+    const r = await panggilFungsiDrive({ aksi: 'hubungkan', code: d.code, redirectUri: location.origin + '/oauth.html', zona: zonaPengguna(), jam: simpan.jam ?? 16 });
+    toast(`Terhubung${r.email ? ' ke ' + r.email : ''}. Sinkron otomatis aktif.`);
+  } catch (e) { toast(e.message, 'err'); }
+  renderDriveHarian();
+}
+
+/** Fallback bila pop-up diblokir: oauth.html menyimpan hasil lalu kembali ke dashboard */
+function cekOAuthTertunda() {
+  try {
+    const d = JSON.parse(localStorage.getItem('lapor-oauth') || 'null');
+    if (d && Date.now() - d.t < 10 * 60000) selesaiOAuth(d);
+    else localStorage.removeItem('lapor-oauth');
+  } catch {}
+}
+
+async function sinkronDriveSekarang(btn) {
+  const asli = btn.innerHTML; btn.disabled = true;
+  let total = 0;
+  try {
+    for (let i = 0; i < 20; i++) {
+      btn.innerHTML = `Mengirim… ${total ? total + ' foto' : ''}`;
+      const r = await panggilFungsiDrive({ aksi: 'sinkron' });
+      if (r.galat) throw new Error(r.galat);
+      total += r.baru || 0;
+      if (r.selesai) break;
+    }
+    toast(total ? `${total} foto terkirim ke Google Drive` : 'Semua foto sudah ada di Drive');
+  } catch (e) { toast(e.message, 'err'); }
+  btn.disabled = false; btn.innerHTML = asli;
+  S.peng = await pengaturan(true).catch(() => S.peng);
+  renderDriveHarian();
 }

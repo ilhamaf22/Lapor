@@ -3,6 +3,12 @@
   publish = "web"
   command = ""
 
+# Fungsi server (sinkron harian Google Drive). Butuh environment variable:
+# SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
 # Service worker & config harus selalu versi terbaru
 [[headers]]
   for = "/sw.js"
