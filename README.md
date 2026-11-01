@@ -93,7 +93,7 @@ tambah/hapus foto, hapus kegiatan.
 |---|---|
 | Salin teks laporan | Teks laporan bulanan dikelompokkan per RK/IKI |
 | Excel | 3 sheet: Ringkasan per IKI, Kegiatan per IKI, Kronologis |
-| ZIP foto per IKI | `Bukti Dukung <Bulan>/<kode IKI nama>/foto…` + Excel + teks. Ekstrak lalu seret foldernya ke Drive |
+| ZIP foto per IKI | `Bukti Dukung <Bulan>/<kode IKI nama>/01.Nama kegiatan_4.2.jpg` + Excel + teks. Ekstrak lalu seret foldernya ke Drive |
 | Kirim ke Google Drive | Unggah langsung, struktur folder sama; file yang sudah ada tidak diunggah ulang |
 
 ### Menghapus foto dari server setelah diunduh
@@ -133,10 +133,18 @@ klik *Lanjutkan*. Ada dua mode kirim:
 - **Langsung ke folder bukti dukung SKP** → masuk ke folder Drive yang tercantum di SKP tiap IKI,
   dibuatkan subfolder bulan lalu subfolder IKI.
 
+Nama file foto: `[nomor].[nama kegiatan]_[kode IKI].jpg`, misalnya `01.Membuat desain spanduk SE2026_4.2.jpg`.
+Nomor urut per folder IKI berdasarkan tanggal kegiatan. Di Google Drive, foto yang sudah pernah dikirim dikenali dari ID-nya,
+jadi kalau nomornya bergeser (ada kegiatan bertanggal lebih awal ditambahkan), file cukup diganti nama — tidak diunggah ulang.
+
+Tutorial langkah demi langkah untuk API key Gemini dan OAuth Client ID juga tersedia langsung di aplikasi:
+tombol **Lihat tutorial** di menu Pengaturan.
+
 ## 8. Tahun depan
 
 Menu **RK, IKI & Pengaturan**:
 
+- **Unduh contoh file** → template Excel sederhana (satu baris = satu IKI, kata kunci & link folder opsional). Isi, lalu unggah.
 - **Tahun baru dari file SKP** → unggah Excel SKP tahun baru. RK, IKI, dan link folder bukti dukung terbaca otomatis.
   IKI yang namanya sama dengan tahun sebelumnya mewarisi kata kunci lamanya; sisanya disusun AI (atau dari nama IKI).
 - **Salin dari tahun lain** → duplikat RK/IKI lalu sesuaikan.

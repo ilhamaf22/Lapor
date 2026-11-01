@@ -77,3 +77,51 @@ export function parseSkpRows(rows) {
   out.rk = out.rk.filter(rk => rk.iki.length || rk.nama);
   return out;
 }
+
+
+/**
+ * Template sederhana (file contoh dari aplikasi): satu baris = satu IKI.
+ * Kolom: No RK | Rencana Kinerja | Kode IKI | Indikator Kinerja Individu | Kata Kunci | Link Folder Bukti Dukung
+ * Baris RK yang kosong mengikuti RK di atasnya (cocok untuk sel yang di-merge).
+ */
+export function parseTemplateRows(rows) {
+  const out = { tahun: null, nama_pegawai: null, rk: [] };
+  let hdr = -1, col = {};
+  for (let r = 0; r < Math.min(rows.length, 30); r++) {
+    const c = rows[r].map(v => bersih(v).toLowerCase());
+    const iRk = c.findIndex(v => /^rencana kinerja/.test(v));
+    const iIki = c.findIndex(v => /^indikator/.test(v));
+    if (iRk >= 0 && iIki >= 0) {
+      hdr = r;
+      col = {
+        no: c.findIndex(v => /^no/.test(v)), rk: iRk, iki: iIki,
+        kode: c.findIndex(v => /^kode/.test(v)),
+        kk: c.findIndex(v => /kata kunci/.test(v)),
+        folder: c.findIndex(v => /folder|link/.test(v))
+      };
+      break;
+    }
+    const mTh = c.join(' ').match(/tahun\D{0,10}(20\d{2})/);
+    if (mTh) out.tahun = Number(mTh[1]);
+  }
+  if (hdr < 0) return out;
+  let rkAktif = null;
+  for (let r = hdr + 1; r < rows.length; r++) {
+    const ambil = i => i >= 0 ? bersih(rows[r][i]) : '';
+    const namaRk = ambil(col.rk), namaIki = ambil(col.iki);
+    if (!namaRk && !namaIki) continue;
+    if (namaRk && (!rkAktif || namaRk !== rkAktif.nama)) {
+      const no = parseInt(ambil(col.no), 10);
+      rkAktif = { nomor: Number.isFinite(no) ? no : out.rk.length + 1, nama: namaRk, iki: [] };
+      out.rk.push(rkAktif);
+    }
+    if (!rkAktif || !namaIki) continue;
+    const kk = ambil(col.kk).split(/[,;\n]/).map(x => x.trim().toLowerCase()).filter(Boolean);
+    rkAktif.iki.push({
+      kode: ambil(col.kode) || `${rkAktif.nomor}.${rkAktif.iki.length + 1}`,
+      nama: namaIki, kata_kunci: [...new Set(kk)], folder_drive: ambil(col.folder) || null
+    });
+  }
+  out.rk = out.rk.filter(r => r.iki.length);
+  return out;
+}

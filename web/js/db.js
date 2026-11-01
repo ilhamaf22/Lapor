@@ -61,6 +61,7 @@ function layarLogin(root) {
     <button class="btn primary block" id="lg-masuk">Masuk</button>
     <button class="btn ghost block" id="lg-daftar">Belum punya akun? Daftar</button>
     <p class="muted tiny">Login sekali, setelah itu aplikasi mengingatmu.</p>
+    <a class="credit-mini" href="https://www.linkedin.com/in/ilham-alifian-firmansyah-58513915a/" target="_blank" rel="noopener">Dibuat oleh <b>Ilham Alifian Firmansyah</b> · LinkedIn ↗</a>
   </div></div>`;
   const ambil = () => ({ email: $('#lg-email').value.trim(), password: $('#lg-pass').value });
   const valid = ({ email, password }) => {

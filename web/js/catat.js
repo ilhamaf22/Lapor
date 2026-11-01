@@ -91,6 +91,7 @@ function render() {
         <div><h3 id="judul-list">Kegiatan hari ini</h3><div class="sub" id="sub-list"></div></div>
       </div>
       <div class="feed" id="feed"></div>
+      <a class="credit-mini" href="https://www.linkedin.com/in/ilham-alifian-firmansyah-58513915a/" target="_blank" rel="noopener">Dibuat oleh <b>Ilham Alifian Firmansyah</b> · LinkedIn ↗</a>
     </main>
 
     <div class="dock">

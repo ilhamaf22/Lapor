@@ -22,8 +22,16 @@ export function kelompokkan(items, rkList) {
   return { grup, belum: lepas };
 }
 
-function namaFile(k, n, total) {
-  return `${k.tanggal}_${slug(k.keterangan, 45)}${total > 1 ? '_' + n : ''}.jpg`;
+/** Nama kegiatan aman untuk nama file (Windows/Drive/ZIP) */
+function namaAman(s) {
+  return String(s || '').replace(/[\\/:*?"<>|\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim()
+    .slice(0, 90).trim().replace(/[. ]+$/, '') || 'Kegiatan';
+}
+/** Format: [nomor].[nama kegiatan]_[kode IKI].jpg — mis. 01.Membuat desain spanduk SE2026_4.2.jpg */
+function namaFile(nomor, lebar, k, iki, path) {
+  const ext = /\.png$/i.test(path) ? 'png' : 'jpg';
+  const kode = iki.id ? iki.kode : 'tanpa IKI';
+  return `${String(nomor).padStart(lebar, '0')}.${namaAman(k.keterangan)}_${kode}.${ext}`;
 }
 
 /**
@@ -34,12 +42,18 @@ function namaFile(k, n, total) {
 export function daftarFileFoto(items, rkList) {
   const { grup, belum } = kelompokkan(items, rkList);
   const out = [];
+  // Nomor urut per folder IKI, urut tanggal lalu waktu catat. Foto terarsip tetap dihitung agar nomor stabil.
   const tambah = (iki, list) => {
-    for (const k of list) {
-      (k.foto || []).forEach((f, i) => {
-        if (f.dihapus_at) return;
-        out.push({ id: f.id, folder: namaFolderIki(iki), nama: namaFile(k, i + 1, k.foto.length), path: f.path, iki });
-      });
+    const urut = [...list].sort((a, b) => a.tanggal.localeCompare(b.tanggal) || String(a.created_at).localeCompare(String(b.created_at)));
+    const total = urut.reduce((s, k) => s + (k.foto?.length || 0), 0);
+    const lebar = Math.max(2, String(total).length);
+    let n = 0;
+    for (const k of urut) {
+      for (const f of k.foto || []) {
+        n++;
+        if (f.dihapus_at) continue;
+        out.push({ id: f.id, folder: namaFolderIki(iki), nama: namaFile(n, lebar, k, iki, f.path), path: f.path, iki });
+      }
     }
   };
   grup.forEach(g => g.iki.forEach(x => tambah(x.iki, x.items)));
@@ -214,22 +228,23 @@ async function folder(nama, parent) {
 }
 
 const cacheIsi = new Map();
-async function namaFileDi(parent) {
+/** Isi folder Drive: nama file + peta id foto → file (dari appProperties), agar tidak menduplikat */
+async function isiFolder(parent) {
   if (cacheIsi.has(parent)) return cacheIsi.get(parent);
-  const set = new Set();
+  const isi = { nama: new Set(), foto: new Map() };
   let token = '';
   do {
     const q = `'${parent}' in parents and trashed=false`;
-    const r = await gapi(`drive/v3/files?q=${encodeURIComponent(q)}&fields=nextPageToken,files(name)&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true${token ? '&pageToken=' + token : ''}`);
-    r.files.forEach(f => set.add(f.name));
+    const r = await gapi(`drive/v3/files?q=${encodeURIComponent(q)}&fields=nextPageToken,files(id,name,appProperties)&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true${token ? '&pageToken=' + token : ''}`);
+    r.files.forEach(f => { isi.nama.add(f.name); const fid = f.appProperties?.laporFotoId; if (fid) isi.foto.set(fid, f); });
     token = r.nextPageToken;
   } while (token);
-  cacheIsi.set(parent, set);
-  return set;
+  cacheIsi.set(parent, isi);
+  return isi;
 }
 
-async function unggah(blob, nama, parent) {
-  const meta = { name: nama, parents: [parent] };
+async function unggah(blob, nama, parent, props) {
+  const meta = { name: nama, parents: [parent], ...(props ? { appProperties: props } : {}) };
   const form = new FormData();
   form.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }));
   form.append('file', blob, nama);
@@ -267,18 +282,25 @@ export async function kirimKeDrive({ bulan, items, rkList, clientId, mode = 'bar
   }
 
   log(`${files.length} foto akan diproses…`);
-  let selesai = 0, dilewati = 0, gagal = 0;
+  let selesai = 0, dilewati = 0, gagal = 0, diganti = 0;
   const berhasil = [];
   // Buat folder berurutan dulu (hindari duplikat), lalu unggah paralel
   for (const f of files) f._parent = await folderUntuk(f);
   await paralel(files, 4, async f => {
     try {
-      const ada = await namaFileDi(f._parent);
-      if (ada.has(f.nama)) { dilewati++; }
+      const isi = await isiFolder(f._parent);
+      const lama = isi.foto.get(f.id);
+      if (lama) {
+        // Foto sudah ada → cukup samakan namanya bila nomor urut berubah
+        if (lama.name !== f.nama) {
+          await gapi(`drive/v3/files/${lama.id}?supportsAllDrives=true`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: f.nama }) });
+          lama.name = f.nama; diganti++;
+        } else dilewati++;
+      } else if (isi.nama.has(f.nama)) { dilewati++; }
       else {
         const blob = await unduhFoto(f.path);
-        await unggah(blob, f.nama, f._parent);
-        ada.add(f.nama);
+        const id = await unggah(blob, f.nama, f._parent, { laporFotoId: f.id });
+        isi.nama.add(f.nama); isi.foto.set(f.id, { id, name: f.nama });
       }
       berhasil.push(f.id);
     } catch (e) { gagal++; log('✗ ' + f.nama + ' — ' + e.message); }
@@ -288,8 +310,8 @@ export async function kirimKeDrive({ bulan, items, rkList, clientId, mode = 'bar
   // Rekap Excel ke folder akar
   const idAkar = await akar();
   const namaX = `Rekap Kegiatan ${judulBulan}.xlsx`;
-  const isiAkar = await namaFileDi(idAkar);
-  if (!isiAkar.has(namaX)) await unggah(excelBlob(bukuExcel(bulan, items, rkList)), namaX, idAkar);
-  log(`Selesai: ${files.length - dilewati - gagal} diunggah, ${dilewati} sudah ada, ${gagal} gagal.`);
+  const isiAkar = await isiFolder(idAkar);
+  if (!isiAkar.nama.has(namaX)) await unggah(excelBlob(bukuExcel(bulan, items, rkList)), namaX, idAkar);
+  log(`Selesai: ${files.length - dilewati - gagal - diganti} diunggah, ${dilewati} sudah ada, ${diganti} diganti nama, ${gagal} gagal.`);
   return { akarUrl: `https://drive.google.com/drive/folders/${idAkar}`, gagal, fotoIds: berhasil };
 }

@@ -4,7 +4,7 @@ import { siapkan, user, sb, keluar, pengaturan, simpanPengaturan, daftarPeriode,
 import { $, $$, esc, toast, salin, hariIni, bulanIni, akhirBulan, namaBulan, tglPendek, tglPanjang, warnaRk, chipIki } from './util.js';
 import { klasifikasi, klasifikasiKataKunci, saranKataKunci, aiKataKunci } from './klasifikasi.js';
 import { SKP_2026 } from './skp-default.js';
-import { parseSkpRows } from './skp-parser.js';
+import { parseSkpRows, parseTemplateRows } from './skp-parser.js';
 import { teksLaporan, bukuExcel, excelBlob, unduhBlob, buatZip, kirimKeDrive, daftarFileFoto } from './ekspor.js';
 import { I } from './icons.js';
 
@@ -37,6 +37,7 @@ function kerangka() {
       <button class="nav-btn" data-v="pengaturan">${I.settings} RK, IKI & Pengaturan</button>
       <a class="nav-btn" href="index.html" style="text-decoration:none">${I.camera} Mode HP</a>
       <div class="spacer"></div>
+      <a class="credit" href="https://www.linkedin.com/in/ilham-alifian-firmansyah-58513915a/" target="_blank" rel="noopener">${I.linkedin}<span>Dibuat oleh<b>Ilham Alifian Firmansyah</b></span></a>
       <div class="who">${esc(user.email)}</div>
       <button class="nav-btn" id="b-out">${I.logout} Keluar</button>
     </aside>
@@ -458,6 +459,11 @@ async function viewPengaturan() {
             ${S.periode.some(p => p.tahun === 2026) ? '' : `<button class="btn accent" id="p-2026">${I.magic} Pakai SKP 2026 bawaan</button>`}
             <button class="btn ghost" id="p-kosong">${I.plus} Kosong</button>
           </div>
+          <div class="contoh">
+            <div><b>Belum punya file?</b> Unduh contoh, isi RK & IKI-mu, lalu unggah lewat <i>Tahun baru dari file SKP</i>.
+              File SKP dari e-Kinerja juga bisa langsung diunggah.</div>
+            <button class="btn sm" id="p-contoh">${I.excel} Unduh contoh file</button>
+          </div>
           <input type="file" id="p-file" accept=".xlsx,.xls" hidden>
         </section>
         <section class="panel" style="margin-top:18px" id="rk-editor"></section>
@@ -468,6 +474,7 @@ async function viewPengaturan() {
   renderEditor();
   renderAkun();
   $('#p-impor').onclick = () => $('#p-file').click();
+  $('#p-contoh').onclick = unduhContoh;
   $('#p-file').onchange = e => imporSkp(e.target.files[0]);
   $('#p-salin').onclick = salinPeriode;
   $('#p-kosong').onclick = async () => {
@@ -590,16 +597,20 @@ function renderAkun() {
     <label>Nama pegawai (untuk judul rekap)<input id="a-nama" value="${esc(p.nama_pegawai || '')}"></label>
     <h3 style="margin:22px 0 0;font-size:15px">✦ Gemini (AI)</h3>
     <label>API key Gemini<input id="a-key" type="password" value="${esc(p.gemini_api_key || '')}" placeholder="AIza…"></label>
-    <label>Model<input id="a-model" value="${esc(p.gemini_model || 'gemini-3.5-flash-lite')}"></label>
-    <p class="muted tiny">Ambil key gratis di aistudio.google.com → Get API key.</p>
+    <div class="lbl-row"><label>Model<input id="a-model" value="${esc(p.gemini_model || 'gemini-3.5-flash-lite')}"></label>
+      <button class="btn sm tut" data-tut="gemini">${I.book} Lihat tutorial</button></div>
+    <p class="muted tiny">Belum punya API key? Klik <b>Lihat tutorial</b> — gratis, ±2 menit.</p>
     <h3 style="margin:22px 0 0;font-size:15px">${I.drive.replace('<svg', '<svg style="width:16px;height:16px;vertical-align:-3px"')} Google Drive</h3>
     <label>Google OAuth Client ID<input id="a-gcid" value="${esc(p.google_client_id || '')}" placeholder="xxxx.apps.googleusercontent.com"></label>
-    <label>Folder induk (opsional, link atau ID)<input id="a-parent" value="${esc(p.drive_parent_id || '')}" placeholder="https://drive.google.com/drive/folders/…"></label>
+    <div class="lbl-row"><label>Folder induk (opsional, link atau ID)<input id="a-parent" value="${esc(p.drive_parent_id || '')}" placeholder="https://drive.google.com/drive/folders/…"></label>
+      <button class="btn sm tut" data-tut="oauth">${I.book} Lihat tutorial</button></div>
+    <p class="muted tiny">Client ID dibuat sekali di Google Cloud. Klik <b>Lihat tutorial</b> untuk langkahnya.</p>
     <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
       <button class="btn primary" id="a-simpan">${I.save} Simpan</button>
       <button class="btn" id="a-tes">${I.magic} Tes klasifikasi</button>
     </div>
     <div id="a-hasil" class="log hidden" style="margin-top:12px"></div>`;
+  $$('[data-tut]', el).forEach(b => b.onclick = () => bukaTutorial(b.dataset.tut));
   $('#a-simpan').onclick = async () => {
     try {
       S.peng = await simpanPengaturan({
@@ -633,6 +644,8 @@ async function imporSkp(file) {
     let hasil = null;
     for (const nm of wb.SheetNames) {
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[nm], { header: 1, defval: '' });
+      const tpl = parseTemplateRows(rows);
+      if (tpl.rk.length) { hasil = tpl; break; }
       const r = parseSkpRows(rows);
       if (r.rk.length) { hasil = r; break; }
     }
@@ -666,11 +679,11 @@ async function imporSkp(file) {
         const flat = hasil.rk.flatMap(r => r.iki.map(i => ({ ...i, rk_nama: r.nama })));
         let ai = {};
         if (pakaiAI) {
-          const perlu = flat.filter(i => !lama[i.nama.toLowerCase()]);
+          const perlu = flat.filter(i => !lama[i.nama.toLowerCase()] && !i.kata_kunci?.length);
           if (perlu.length) { try { ai = await aiKataKunci(perlu, S.peng); } catch (e) { toast('AI gagal, pakai kata kunci dasar', 'err'); } }
         }
         hasil.rk.forEach(r => r.iki.forEach(i => {
-          i.kata_kunci = lama[i.nama.toLowerCase()] || ai[i.kode] || saranKataKunci(i.nama);
+          i.kata_kunci = (i.kata_kunci?.length ? i.kata_kunci : null) || lama[i.nama.toLowerCase()] || ai[i.kode] || saranKataKunci(i.nama);
         }));
         const p = await buatPeriodeDariSkp(hasil);
         S.perEdit = p.id; bg.remove(); toast(`SKP ${hasil.tahun} diimpor`); viewPengaturan();
@@ -777,4 +790,93 @@ async function bukaHapusPeriode(dari = S.bulan + '-01', sampai = akhirBulan(S.bu
     } catch (e) { p.log('Gagal: ' + e.message); p.selesai('Sebagian mungkin sudah terhapus — buka lagi untuk melanjutkan.'); viewRekap(); }
   };
   hitung();
+}
+
+// =====================================================================
+// CONTOH FILE RK/IKI
+// =====================================================================
+function unduhContoh() {
+  const th = new Date().getFullYear() + (new Date().getMonth() >= 9 ? 1 : 0);
+  const H = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '0F2A47' } }, alignment: { vertical: 'center', wrapText: true } };
+  const W = { alignment: { vertical: 'top', wrapText: true } };
+  const C = { font: { italic: true, color: { rgb: '7B8494' } }, alignment: { vertical: 'top', wrapText: true } };
+  const data = [
+    ['No RK', 'Rencana Kinerja', 'Kode IKI', 'Indikator Kinerja Individu', 'Kata Kunci (opsional, pisahkan dengan koma)', 'Link Folder Bukti Dukung (opsional)'],
+    [1, 'Terselenggaranya Sensus Ekonomi 2026', '1.1', 'Persentase terselenggaranya pelaksanaan Sensus Ekonomi 2026 sebesar 100 persen', 'pencacahan, pemutakhiran, fasih, pengawasan lapangan, pelatihan petugas', ''],
+    [2, 'Terselenggaranya hubungan dengan Media Massa yang efektif', '2.1', 'Persentase terlaksananya Press Release Berita Resmi Statistik sebesar 100 persen', 'brs, berita resmi statistik, rilis, konferensi pers, awak media', ''],
+    [3, 'Terlaksananya pengelolaan media sosial yang efektif', '3.1', 'Persentase manajemen akun media sosial sebesar 100 persen', 'instagram, facebook, unggah, posting, balas komentar', ''],
+    ['', '', '3.2', 'Persentase pengukuran kinerja dan evaluasi media sosial sebesar 100 persen', 'laporan medsos, insight, engagement, evaluasi media sosial', ''],
+    [4, 'Terlaksananya publisitas kegiatan organisasi dan statistik', '4.1', 'Persentase tersedianya konten kreatif pada media elektronik sebesar 100 persen', 'video, reels, infografis, desain konten', ''],
+    ['', '', '4.2', 'Persentase tersedianya desain publisitas pada media cetak sebesar 100 persen', 'spanduk, banner, poster, baliho, sertifikat, cetak', ''],
+    [5, 'Terselenggaranya reformasi birokrasi dan zona integritas', '5.1', 'Persentase pemenuhan kelengkapan lembar kerja evaluasi zona integritas sebesar 100 persen', 'lke zi, zona integritas, eviden zi, pengungkit', ''],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [{ wch: 7 }, { wch: 44 }, { wch: 9 }, { wch: 60 }, { wch: 46 }, { wch: 40 }];
+  const rg = XLSX.utils.decode_range(ws['!ref']);
+  for (let r = rg.s.r; r <= rg.e.r; r++) for (let c = rg.s.c; c <= rg.e.c; c++) {
+    const ref = XLSX.utils.encode_cell({ r, c }); if (!ws[ref]) ws[ref] = { t: 's', v: '' };
+    ws[ref].s = r === 0 ? H : (c >= 4 ? C : W);
+  }
+  ws['!rows'] = [{ hpt: 34 }];
+  ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+  const petunjuk = [
+    ['CARA MENGISI'],
+    ['1. Satu baris = satu Indikator Kinerja Individu (IKI). Hapus contoh, ganti dengan RK & IKI milikmu.'],
+    ['2. Bila satu RK punya beberapa IKI, kolom "No RK" dan "Rencana Kinerja" boleh dikosongkan di baris berikutnya — otomatis ikut RK di atasnya.'],
+    ['3. "Kode IKI" boleh dikosongkan; akan dibuat otomatis (1.1, 1.2, 2.1, …).'],
+    ['4. "Kata Kunci" membantu pemilahan otomatis tanpa AI. Bila kosong, kata kunci disusun AI atau dari nama IKI saat impor.'],
+    ['5. "Link Folder Bukti Dukung" opsional: folder Google Drive tujuan bukti dukung untuk IKI itu.'],
+    ['6. Simpan, lalu di aplikasi: RK, IKI & Pengaturan → Tahun baru dari file SKP → pilih file ini → isi tahunnya.'],
+    [''],
+    ['Alternatif: file Excel SKP unduhan e-Kinerja juga bisa langsung diunggah tanpa diubah.'],
+    [`Tahun periode yang disarankan: ${th}`],
+  ];
+  const wp = XLSX.utils.aoa_to_sheet(petunjuk);
+  wp['!cols'] = [{ wch: 120 }];
+  wp.A1.s = { font: { bold: true, sz: 13, color: { rgb: '0F2A47' } } };
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'RK IKI');
+  XLSX.utils.book_append_sheet(wb, wp, 'Petunjuk');
+  unduhBlob(excelBlob(wb), 'Contoh RK IKI - Lapor Kinerja.xlsx');
+}
+
+// =====================================================================
+// TUTORIAL
+// =====================================================================
+function langkah(arr) {
+  return `<ol class="tut-steps">${arr.map(([j, d]) => `<li><b>${j}</b><span>${d}</span></li>`).join('')}</ol>`;
+}
+function bukaTutorial(jenis) {
+  const asal = location.origin;
+  const isi = jenis === 'gemini' ? `
+    <h3>${I.magic} Cara mendapatkan API key Gemini</h3>
+    <p class="muted" style="margin:0 0 6px">Gratis untuk pemakaian pribadi. Dipakai untuk memilah kegiatan yang tidak cocok dengan kata kunci.</p>
+    ${langkah([
+      ['Buka Google AI Studio', 'Buka <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> dan masuk dengan akun Google-mu.'],
+      ['Buat API key', 'Klik <b>Create API key</b> (Buat kunci API). Bila diminta memilih project, pilih yang ada atau biarkan dibuatkan project baru.'],
+      ['Salin key-nya', 'Key berbentuk teks panjang yang biasanya diawali <span class="mono">AIza…</span>. Klik ikon salin.'],
+      ['Tempel di aplikasi', 'Tempel di kolom <b>API key Gemini</b>, lalu klik <b>Simpan</b>.'],
+      ['Uji coba', 'Klik <b>Tes klasifikasi</b> dan tulis contoh kegiatan. Bila muncul kode IKI, berarti sudah berhasil.'],
+    ])}
+    <div class="tut-note"><b>Kolom Model:</b> biarkan <span class="mono">gemini-3.5-flash-lite</span> (cepat & hemat kuota). Bila suatu saat muncul error model tidak ditemukan,
+      ganti dengan model Flash/Flash-Lite terbaru dari <a href="https://ai.google.dev/gemini-api/docs/models" target="_blank" rel="noopener">daftar model Gemini</a>.</div>
+    <div class="tut-note warn">Jaga kerahasiaan API key — jangan dibagikan atau diunggah ke tempat umum.</div>` : `
+    <h3>${I.drive} Cara membuat Google OAuth Client ID</h3>
+    <p class="muted" style="margin:0 0 6px">Dibuat sekali saja (±10 menit) agar aplikasi bisa mengunggah foto langsung ke Google Drive-mu. Tanpa ini, tombol <b>ZIP foto per IKI</b> tetap bisa dipakai.</p>
+    ${langkah([
+      ['Buka Google Cloud Console', 'Buka <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">console.cloud.google.com</a>, buat project baru (mis. "Lapor Kinerja") atau pakai project yang sama dengan API key Gemini.'],
+      ['Aktifkan Google Drive API', 'Menu <b>APIs & Services → Library</b>, cari <b>Google Drive API</b>, klik <b>Enable</b>.'],
+      ['Atur layar persetujuan', 'Menu <b>Google Auth Platform</b> (dulu: <i>OAuth consent screen</i>) → <b>Get started</b>. Isi nama aplikasi & email, pilih Audience <b>External</b>, lalu <b>Create</b>.'],
+      ['Tambahkan dirimu sebagai penguji', 'Di bagian <b>Audience → Test users</b>, klik <b>Add users</b> dan masukkan email Google yang akan dipakai mengunggah.'],
+      ['Buat Client ID', `Bagian <b>Clients → Create client</b>. Application type: <b>Web application</b>. Pada <b>Authorized JavaScript origins</b> tambahkan alamat situs ini:
+        <span class="copy-row"><span class="mono" id="tut-asal">${esc(asal)}</span><button class="btn sm" id="tut-salin">${I.copy} Salin</button></span>Lalu klik <b>Create</b>.`],
+      ['Tempel di aplikasi', 'Salin <b>Client ID</b> (berakhiran <span class="mono">.apps.googleusercontent.com</span>), tempel di kolom <b>Google OAuth Client ID</b>, lalu <b>Simpan</b>.'],
+      ['Saat pertama mengirim', 'Google menampilkan peringatan <i>"Google hasn\'t verified this app"</i>. Itu wajar untuk aplikasi pribadi — klik <b>Continue</b> (Lanjutkan) dan izinkan akses Drive.'],
+    ])}
+    <div class="tut-note"><b>Folder induk (opsional):</b> buka folder tujuan di Google Drive, salin alamatnya dari address bar
+      (<span class="mono">https://drive.google.com/drive/folders/…</span>), tempel di kolom <b>Folder induk</b>. Bila kosong, folder dibuat di <i>My Drive</i>.</div>`;
+  const bg = modal(isi + `<div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="btn primary" id="tut-ok">Mengerti</button></div>`, { lebar: 640 });
+  $('#tut-ok', bg).onclick = () => bg.remove();
+  const sb = $('#tut-salin', bg);
+  if (sb) sb.onclick = async () => { (await salin(asal)) ? toast('Alamat situs tersalin') : toast('Gagal menyalin', 'err'); };
 }
