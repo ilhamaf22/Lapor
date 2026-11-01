@@ -3,7 +3,6 @@ import { siapkan, user, sb, keluar, pengaturan, simpanPengaturan, daftarPeriode,
   kegiatanRentang, simpanKegiatan, ubahKegiatan, hapusKegiatan, hapusFoto, urlFoto, unggahFoto, tandaiDiekspor, hapusFotoServer } from './db.js';
 import { $, $$, esc, toast, salin, hariIni, bulanIni, akhirBulan, namaBulan, tglPendek, tglPanjang, warnaRk, chipIki } from './util.js';
 import { klasifikasi, klasifikasiKataKunci, saranKataKunci, aiKataKunci } from './klasifikasi.js';
-import { SKP_2026 } from './skp-default.js';
 import { parseSkpRows, parseTemplateRows } from './skp-parser.js';
 import { teksLaporan, bukuExcel, excelBlob, unduhBlob, buatZip, kirimKeDrive, daftarFileFoto } from './ekspor.js';
 import { I } from './icons.js';
@@ -456,7 +455,6 @@ async function viewPengaturan() {
           <div class="toolbar" style="margin:14px 0 0">
             <button class="btn primary" id="p-impor">${I.upload} Tahun baru dari file SKP</button>
             <button class="btn" id="p-salin">${I.copy} Salin dari tahun lain</button>
-            ${S.periode.some(p => p.tahun === 2026) ? '' : `<button class="btn accent" id="p-2026">${I.magic} Pakai SKP 2026 bawaan</button>`}
             <button class="btn ghost" id="p-kosong">${I.plus} Kosong</button>
           </div>
           <div class="contoh">
@@ -482,14 +480,11 @@ async function viewPengaturan() {
     if (!th) return;
     try { const p = await buatPeriodeDariSkp({ tahun: th, label: `SKP ${th}`, rk: [] }); S.perEdit = p.id; viewPengaturan(); } catch (e) { toast(e.message, 'err'); }
   };
-  if ($('#p-2026')) $('#p-2026').onclick = async () => {
-    try { const p = await buatPeriodeDariSkp(SKP_2026); S.perEdit = p.id; toast('SKP 2026 terpasang'); viewPengaturan(); } catch (e) { toast(e.message, 'err'); }
-  };
 }
 
 function renderPeriode() {
   const el = $('#per-list');
-  if (!S.periode.length) { el.innerHTML = `<div class="muted">Belum ada periode. Klik <b>Pakai SKP 2026 bawaan</b> untuk mulai cepat.</div>`; return; }
+  if (!S.periode.length) { el.innerHTML = `<div class="muted">Belum ada periode. Unggah file SKP dari e-Kinerja lewat <b>Tahun baru dari file SKP</b>, atau <b>Unduh contoh file</b> di bawah lalu isi RK & IKI-mu.</div>`; return; }
   el.innerHTML = S.periode.map(p => `
     <div class="per-item ${p.id === S.perEdit ? 'on' : ''}" data-p="${p.id}">
       <b class="mono">${p.tahun}</b><span>${esc(p.label)}</span>${p.aktif ? '<span class="pill">aktif</span>' : ''}

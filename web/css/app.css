@@ -354,6 +354,25 @@ textarea { resize: vertical; min-height: 90px; }
 .credit b { display: block; font-size: 12px; color: #fff; }
 .credit-mini { display: block; text-align: center; margin: 18px 0 4px; font-size: 12px; color: var(--muted); text-decoration: none; }
 .credit-mini b { color: var(--ink-2); }
+.auth-h { margin: 18px 0 0; font-size: 22px; letter-spacing: -.02em; }
+.auth-sub { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+.auth-info { margin-top: 12px; padding: 10px 12px; border-radius: 12px; font-size: 13px; line-height: 1.45; }
+.auth-info.ok { background: color-mix(in srgb, var(--ok) 12%, transparent); color: color-mix(in srgb, var(--ok) 70%, var(--ink)); }
+.auth-info.err { background: color-mix(in srgb, var(--err) 10%, transparent); color: color-mix(in srgb, var(--err) 80%, var(--ink)); }
+.auth-row { display: flex; justify-content: flex-end; margin-top: 8px; font-size: 13px; }
+.auth-row a, .auth-alt a { color: var(--navy-2); font-weight: 700; text-decoration: none; }
+.auth-alt { text-align: center; margin: 14px 0 0; font-size: 14px; color: var(--ink-2); }
+.auth-card form .btn { margin-top: 14px; }
+.pw-wrap { position: relative; display: block; }
+.pw-wrap input { padding-right: 46px; }
+.pw-eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); margin-top: 3px; width: 36px; height: 36px; border: 0; background: transparent; color: var(--muted); cursor: pointer; border-radius: 10px; display: grid; place-items: center; }
+.pw-eye svg { width: 18px; height: 18px; }
+.pw-eye.on { color: var(--navy-2); background: var(--bg); }
+.pw-meter { height: 4px; border-radius: 99px; background: var(--bg-2); margin-top: 8px; overflow: hidden; }
+.pw-meter span { display: block; height: 100%; width: 0; transition: width .2s, background .2s; }
+.auth-done { text-align: center; padding: 6px 0 4px; }
+.auth-done .ic-big { font-size: 44px; margin-top: 10px; }
+.auth-card > .btn { margin-top: 14px; }
 .m-tabs { display: none; }
 
 @media (max-width: 900px) {

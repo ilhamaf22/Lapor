@@ -21,8 +21,13 @@ laporan-kinerja/
 1. Buat project baru di supabase.com (region Singapore paling dekat).
 2. **SQL Editor → New query** → tempel isi `supabase/schema.sql` → **Run**. (Aman dijalankan ulang; jalankan lagi setiap ada versi baru skema.)
    Ini membuat tabel, keamanan per akun (RLS), dan bucket foto privat `bukti`.
-3. **Authentication → Sign In / Providers → Email**: matikan *Confirm email* supaya bisa langsung masuk setelah daftar
-   (atau biarkan aktif dan klik link konfirmasi di email).
+3. **Authentication → URL Configuration** (wajib untuk link konfirmasi & reset kata sandi):
+   - *Site URL*: `https://laporskp.netlify.app`
+   - *Redirect URLs*: tambahkan `https://laporskp.netlify.app/**`
+   Lalu **Authentication → Sign In / Providers → Email**: pastikan *Allow new users to sign up* aktif.
+   *Confirm email* boleh aktif (pengguna baru harus klik link di email) atau dimatikan (langsung masuk setelah daftar).
+   Catatan: email bawaan Supabase dibatasi beberapa email per jam. Bila penggunanya banyak, pasang SMTP sendiri di
+   **Authentication → Emails → SMTP Settings** (mis. Gmail/Brevo/Resend).
 4. **Project Settings → API**: catat *Project URL* dan *anon/publishable key*.
    Isi ke `web/config.js`, atau biarkan kosong — aplikasi akan menanyakannya saat pertama dibuka.
 
@@ -34,8 +39,8 @@ Tidak perlu build. (Kalau pakai Git, set *publish directory* = `web`.)
 ## 3. Pertama kali dibuka
 
 1. Buka `https://<situsmu>.netlify.app/dashboard.html` → **Daftar** dengan email & kata sandi.
-2. Menu **RK, IKI & Pengaturan** → klik **Pakai SKP 2026 bawaan**. RK & IKI dari file SKP-mu langsung terpasang,
-   lengkap dengan kata kunci awal dan link folder bukti dukung Drive dari SKP.
+2. Menu **RK, IKI & Pengaturan** → **Tahun baru dari file SKP** → pilih file Excel SKP dari e-Kinerja.
+   Belum punya file? Klik **Unduh contoh file**, isi RK & IKI, lalu unggah. RK, IKI, dan link folder bukti dukung terbaca otomatis.
 3. Isi **API key Gemini** (gratis di aistudio.google.com → *Get API key*) → **Simpan** → **Tes klasifikasi**.
 
 ## 4. Pasang di HP Android

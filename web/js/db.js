@@ -52,46 +52,185 @@ function layarSetup(root) {
   };
 }
 
-function layarLogin(root) {
+// =====================================================================
+//  AUTENTIKASI: Masuk · Daftar · Lupa kata sandi · Atur kata sandi baru
+// =====================================================================
+const LINKEDIN = 'https://www.linkedin.com/in/ilham-alifian-firmansyah-58513915a/';
+const EMAIL_RX = /^\S+@\S+\.\S+$/;
+const urlKembali = () => location.origin + location.pathname;
+const aman = s => String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function pesanAuth(e) {
+  const m = String(e?.message || e);
+  if (/anonymous/i.test(m)) return 'Email dan kata sandi wajib diisi.';
+  if (/signups? (are|is) (not allowed|disabled)/i.test(m)) return 'Pendaftaran sedang ditutup oleh admin aplikasi.';
+  if (/Invalid login credentials/i.test(m)) return 'Email atau kata sandi salah. Belum punya akun? Klik Daftar.';
+  if (/Email not confirmed/i.test(m)) return 'Email belum dikonfirmasi. Buka email dari Lapor Kinerja dan klik link konfirmasinya.';
+  if (/already (registered|been registered)|User already/i.test(m)) return 'Email ini sudah terdaftar. Silakan masuk, atau pakai "Lupa kata sandi".';
+  if (/rate limit|too many|security purposes/i.test(m)) return 'Terlalu banyak percobaan. Tunggu beberapa menit lalu coba lagi.';
+  if (/should be at least|Password should/i.test(m)) return 'Kata sandi terlalu pendek (minimal 6 karakter).';
+  if (/same.*password|different from the old/i.test(m)) return 'Kata sandi baru harus berbeda dari yang lama.';
+  if (/expired|invalid.*(token|link)|otp/i.test(m)) return 'Link sudah kedaluwarsa atau sudah dipakai. Minta link baru.';
+  if (/fetch|network/i.test(m)) return 'Tidak ada koneksi internet. Coba lagi saat ada sinyal.';
+  return m;
+}
+
+const mata = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const inputSandi = (id, label, ac) => `<label>${label}<span class="pw-wrap"><input id="${id}" type="password" autocomplete="${ac}"><button type="button" class="pw-eye" data-eye="${id}" aria-label="Tampilkan kata sandi">${mata}</button></span></label>`;
+
+function kartuAuth(root, isi) {
   root.innerHTML = `
   <div class="auth-wrap"><div class="auth-card">
     <div class="brand-big"><span class="logo">LK</span><div><b>Lapor Kinerja</b><small>Catat kegiatan · bukti dukung · IKI</small></div></div>
-    <label>Email<input id="lg-email" type="email" autocomplete="email"></label>
-    <label>Kata sandi<input id="lg-pass" type="password" autocomplete="current-password"></label>
-    <button class="btn primary block" id="lg-masuk">Masuk</button>
-    <button class="btn ghost block" id="lg-daftar">Belum punya akun? Daftar</button>
-    <p class="muted tiny">Login sekali, setelah itu aplikasi mengingatmu.</p>
-    <a class="credit-mini" href="https://www.linkedin.com/in/ilham-alifian-firmansyah-58513915a/" target="_blank" rel="noopener">Dibuat oleh <b>Ilham Alifian Firmansyah</b> · LinkedIn ↗</a>
+    ${isi}
+    <a class="credit-mini" href="${LINKEDIN}" target="_blank" rel="noopener">Dibuat oleh <b>Ilham Alifian Firmansyah</b> · LinkedIn ↗</a>
   </div></div>`;
-  const ambil = () => ({ email: $('#lg-email').value.trim(), password: $('#lg-pass').value });
-  const valid = ({ email, password }) => {
-    if (!email || !/^\S+@\S+\.\S+$/.test(email)) { toast('Isi email yang valid dulu', 'err'); return false; }
-    if (!password || password.length < 6) { toast('Kata sandi minimal 6 karakter', 'err'); return false; }
-    return true;
-  };
-  const pesan = e => {
-    const m = String(e?.message || e);
-    if (/anonymous/i.test(m)) return 'Email/kata sandi kosong. Isi keduanya lalu coba lagi.';
-    if (/signups? (are|is) (not allowed|disabled)/i.test(m)) return 'Pendaftaran dimatikan di Supabase: Authentication → Sign In / Providers → aktifkan "Allow new users to sign up" & Email.';
-    if (/Invalid login credentials/i.test(m)) return 'Email atau kata sandi salah (atau akun belum terdaftar).';
-    if (/Email not confirmed/i.test(m)) return 'Email belum dikonfirmasi. Klik link di email, atau matikan "Confirm email" di Supabase.';
-    if (/already registered/i.test(m)) return 'Email sudah terdaftar — klik Masuk.';
-    if (/rate limit/i.test(m)) return 'Terlalu banyak percobaan. Tunggu beberapa menit.';
-    return m;
-  };
-  $('#lg-masuk').onclick = async () => {
-    const d = ambil(); if (!valid(d)) return;
-    const { error } = await sb.auth.signInWithPassword(d);
-    if (error) toast(pesan(error), 'err'); else location.reload();
-  };
-  $('#lg-daftar').onclick = async () => {
-    const d = ambil(); if (!valid(d)) return;
-    const { data, error } = await sb.auth.signUp(d);
-    if (error) return toast(pesan(error), 'err');
-    if (data.session) location.reload();
-    else toast('Akun dibuat. Cek email untuk konfirmasi, lalu klik Masuk.', 'ok');
-  };
-  $('#lg-pass').onkeydown = e => { if (e.key === 'Enter') $('#lg-masuk').click(); };
+  root.querySelectorAll('[data-eye]').forEach(b => b.onclick = () => {
+    const inp = document.getElementById(b.dataset.eye);
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+    b.classList.toggle('on', inp.type === 'text');
+  });
+  root.querySelectorAll('[data-ke]').forEach(a => a.onclick = e => {
+    e.preventDefault();
+    const email = root.querySelector('input[type=email]')?.value.trim();
+    layarAuth(root, a.dataset.ke, { email });
+  });
+  const form = root.querySelector('form');
+  if (form) form.onsubmit = e => e.preventDefault();
+}
+
+function info(root, html, jenis = 'ok') {
+  const el = root.querySelector('.auth-info');
+  if (!el) return;
+  el.className = 'auth-info ' + jenis;
+  el.innerHTML = html;
+}
+async function sibuk(btn, teks, fn) {
+  const asli = btn.innerHTML; btn.disabled = true; btn.innerHTML = teks;
+  try { return await fn(); }
+  catch (e) { info(btn.closest('.auth-card').parentElement.parentElement, pesanAuth(e), 'err'); }
+  finally { if (btn.isConnected) { btn.disabled = false; btn.innerHTML = asli; } }
+}
+
+function layarAuth(root, mode = 'masuk', ekstra = {}) {
+  const em = aman(ekstra.email);
+
+  if (mode === 'masuk') {
+    kartuAuth(root, `
+      <h2 class="auth-h">Masuk</h2>
+      <div class="auth-info hidden"></div>
+      <form>
+        <label>Email<input id="lg-email" type="email" autocomplete="email" value="${em}"></label>
+        ${inputSandi('lg-pass', 'Kata sandi', 'current-password')}
+        <div class="auth-row"><a href="#" data-ke="lupa">Lupa kata sandi?</a></div>
+        <button class="btn primary block" id="lg-masuk" type="submit">Masuk</button>
+      </form>
+      <p class="auth-alt">Belum punya akun? <a href="#" data-ke="daftar">Daftar di sini</a></p>`);
+    if (ekstra.pesan) info(root, ekstra.pesan, ekstra.jenis || 'ok');
+    $('#lg-masuk').onclick = () => sibuk($('#lg-masuk'), 'Memeriksa…', async () => {
+      const email = $('#lg-email').value.trim(), password = $('#lg-pass').value;
+      if (!EMAIL_RX.test(email)) return info(root, 'Isi email yang valid.', 'err');
+      if (!password) return info(root, 'Isi kata sandi.', 'err');
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) return info(root, pesanAuth(error), 'err');
+      location.reload();
+    });
+  }
+
+  if (mode === 'daftar') {
+    kartuAuth(root, `
+      <h2 class="auth-h">Buat akun</h2>
+      <p class="auth-sub">Gratis. Kegiatan & foto hanya bisa diakses oleh akunmu sendiri.</p>
+      <div class="auth-info hidden"></div>
+      <form>
+        <label>Nama lengkap<input id="rg-nama" autocomplete="name" placeholder="Nama sesuai SKP"></label>
+        <label>Email<input id="rg-email" type="email" autocomplete="email" value="${em}"></label>
+        ${inputSandi('rg-pass', 'Kata sandi (min. 6 karakter)', 'new-password')}
+        <div class="pw-meter"><span id="rg-meter"></span></div>
+        ${inputSandi('rg-pass2', 'Ulangi kata sandi', 'new-password')}
+        <button class="btn primary block" id="rg-ok" type="submit">Daftar</button>
+      </form>
+      <p class="auth-alt">Sudah punya akun? <a href="#" data-ke="masuk">Masuk</a></p>`);
+    $('#rg-pass').oninput = () => {
+      const v = $('#rg-pass').value;
+      const skor = (v.length >= 6) + (v.length >= 10) + /[A-Z]/.test(v) + /\d/.test(v) + /[^A-Za-z0-9]/.test(v);
+      const el = $('#rg-meter');
+      el.style.width = Math.min(100, skor * 20) + '%';
+      el.style.background = skor <= 1 ? 'var(--err)' : skor <= 3 ? 'var(--accent)' : 'var(--ok)';
+    };
+    $('#rg-ok').onclick = () => sibuk($('#rg-ok'), 'Membuat akun…', async () => {
+      const nama = $('#rg-nama').value.trim(), email = $('#rg-email').value.trim();
+      const password = $('#rg-pass').value, ulang = $('#rg-pass2').value;
+      if (!nama) return info(root, 'Isi nama lengkap.', 'err');
+      if (!EMAIL_RX.test(email)) return info(root, 'Isi email yang valid.', 'err');
+      if (password.length < 6) return info(root, 'Kata sandi minimal 6 karakter.', 'err');
+      if (password !== ulang) return info(root, 'Kedua kata sandi tidak sama.', 'err');
+      const { data, error } = await sb.auth.signUp({ email, password, options: { data: { nama }, emailRedirectTo: urlKembali() } });
+      if (error) return info(root, pesanAuth(error), 'err');
+      // Supabase tidak memberi galat bila email sudah terdaftar & terkonfirmasi: identities kosong
+      if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0)
+        return info(root, pesanAuth('already registered'), 'err');
+      if (data.session) {
+        try { await sb.from('pengaturan').upsert({ user_id: data.session.user.id, nama_pegawai: nama }); } catch {}
+        location.reload();
+        return;
+      }
+      kartuAuth(root, `
+        <div class="auth-done"><div class="ic-big">✉️</div>
+          <h2 class="auth-h">Cek emailmu</h2>
+          <p class="auth-sub">Link konfirmasi sudah dikirim ke <b>${aman(email)}</b>. Klik link itu, lalu kamu otomatis masuk.</p>
+          <p class="muted tiny">Tidak ada di kotak masuk? Cek folder Spam/Promosi. Email bisa butuh 1–2 menit.</p>
+        </div>
+        <div class="auth-info hidden"></div>
+        <button class="btn block" id="rg-ulang">Kirim ulang email</button>
+        <p class="auth-alt"><a href="#" data-ke="masuk">Kembali ke halaman masuk</a></p>`);
+      $('#rg-ulang').onclick = () => sibuk($('#rg-ulang'), 'Mengirim…', async () => {
+        const { error: e2 } = await sb.auth.resend({ type: 'signup', email, options: { emailRedirectTo: urlKembali() } });
+        info(root, e2 ? pesanAuth(e2) : 'Email konfirmasi sudah dikirim ulang.', e2 ? 'err' : 'ok');
+      });
+    });
+  }
+
+  if (mode === 'lupa') {
+    kartuAuth(root, `
+      <h2 class="auth-h">Lupa kata sandi</h2>
+      <p class="auth-sub">Masukkan email akunmu. Kami kirim link untuk membuat kata sandi baru.</p>
+      <div class="auth-info hidden"></div>
+      <form>
+        <label>Email<input id="lp-email" type="email" autocomplete="email" value="${em}"></label>
+        <button class="btn primary block" id="lp-ok" type="submit">Kirim link reset</button>
+      </form>
+      <p class="auth-alt"><a href="#" data-ke="masuk">← Kembali ke halaman masuk</a></p>`);
+    if (ekstra.pesan) info(root, ekstra.pesan, ekstra.jenis || 'ok');
+    $('#lp-ok').onclick = () => sibuk($('#lp-ok'), 'Mengirim…', async () => {
+      const email = $('#lp-email').value.trim();
+      if (!EMAIL_RX.test(email)) return info(root, 'Isi email yang valid.', 'err');
+      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: urlKembali() });
+      if (error) return info(root, pesanAuth(error), 'err');
+      info(root, `Bila <b>${aman(email)}</b> terdaftar, link reset sudah dikirim. Buka email itu dan klik linknya — sebaiknya di perangkat ini. Cek juga folder Spam.`, 'ok');
+    });
+  }
+
+  if (mode === 'baru') {
+    kartuAuth(root, `
+      <h2 class="auth-h">Buat kata sandi baru</h2>
+      <p class="auth-sub">Untuk akun <b>${em}</b></p>
+      <div class="auth-info hidden"></div>
+      <form>
+        ${inputSandi('nb-pass', 'Kata sandi baru (min. 6 karakter)', 'new-password')}
+        ${inputSandi('nb-pass2', 'Ulangi kata sandi baru', 'new-password')}
+        <button class="btn primary block" id="nb-ok" type="submit">Simpan kata sandi</button>
+      </form>`);
+    $('#nb-ok').onclick = () => sibuk($('#nb-ok'), 'Menyimpan…', async () => {
+      const a = $('#nb-pass').value, b = $('#nb-pass2').value;
+      if (a.length < 6) return info(root, 'Kata sandi minimal 6 karakter.', 'err');
+      if (a !== b) return info(root, 'Kedua kata sandi tidak sama.', 'err');
+      const { error } = await sb.auth.updateUser({ password: a });
+      if (error) return info(root, pesanAuth(error), 'err');
+      info(root, 'Kata sandi berhasil diperbarui. Membuka aplikasi…', 'ok');
+      setTimeout(() => location.reload(), 900);
+    });
+  }
 }
 
 /** Pastikan sudah terhubung & login. Mengembalikan true jika siap. */
@@ -102,11 +241,31 @@ export async function siapkan(root) {
     auth: { persistSession: true, autoRefreshToken: true },
     global: { fetch: fetchBatas }
   });
+  // Kembali dari link email (konfirmasi daftar / reset kata sandi)?
+  const hash = new URLSearchParams(location.hash.slice(1));
+  const query = new URLSearchParams(location.search);
+  const dariEmail = hash.has('access_token') || hash.has('error_description') || query.has('code') || query.has('error_description');
+  if (dariEmail) {
+    const galat = hash.get('error_description') || query.get('error_description');
+    const jenis = hash.get('type') || query.get('type');
+    let sesiBaru = null;
+    try { sesiBaru = (await tunggu(sb.auth.getSession(), 10000)).data?.session; } catch {}
+    history.replaceState(null, '', location.pathname);
+    if (galat || !sesiBaru) {
+      layarAuth(root, jenis === 'recovery' ? 'lupa' : 'masuk', { pesan: pesanAuth(galat || 'link expired'), jenis: 'err' });
+      return false;
+    }
+    if (jenis === 'recovery') { layarAuth(root, 'baru', { email: sesiBaru.user.email }); return false; }
+    // Konfirmasi pendaftaran berhasil → simpan nama ke pengaturan
+    const nama = sesiBaru.user.user_metadata?.nama;
+    if (nama) { try { await sb.from('pengaturan').upsert({ user_id: sesiBaru.user.id, nama_pegawai: nama }); } catch {} }
+    toast('Email terkonfirmasi. Selamat datang!');
+  }
   // Sesi yang sudah tersimpan di HP langsung dipakai (instan, juga offline). Pembaruan token berjalan di latar belakang.
   let sesi = sesiTersimpan();
   if (sesi) sb.auth.getSession().catch(() => {});
   else { try { sesi = (await tunggu(sb.auth.getSession(), 8000)).data?.session; } catch {} }
-  if (!sesi) { layarLogin(root); return false; }
+  if (!sesi) { layarAuth(root, 'masuk'); return false; }
   user = sesi.user;
   return true;
 }
